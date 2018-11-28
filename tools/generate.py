@@ -189,7 +189,8 @@ def main():
     ap.add_argument('descriptors', action="store", type=str, help="path to top-level directory containing current Tor server-descriptors", metavar='DESCRIPTORS', default=None)
     ap.add_argument('extrainfos', action="store", type=str, help="path to top-level directory containing current Tor extra-infos", metavar='EXTRAINFOS', default=None)
     ap.add_argument('connectingusers', action="store", type=str, help="path to csv containing Tor directly connecting user country data", metavar='CONNECTINGUSERS', default=None)
-
+    
+    ap.add_argument('plugins', action="store", type=str, help="path to plugin directory containing all plugins build", metavar='PLUGINS', default=None)
     # get arguments, accessible with args.value
     args = ap.parse_args()
 
@@ -206,6 +207,7 @@ def main():
     args.extrainfos = os.path.abspath(os.path.expanduser(args.extrainfos))
     args.connectingusers = os.path.abspath(os.path.expanduser(args.connectingusers))
     args.geoippath = os.path.abspath(os.path.expanduser(args.geoippath))
+    args.plugins = os.path.abspath(os.path.expanduser(args.plugins))
 
     args.torbin = which("tor")
     args.torgencertbin = which("tor-gencert")
@@ -307,6 +309,8 @@ def generate(args):
     with open("conf/shadowresolv.conf", "wb") as f: print >>f, "nameserver 127.0.0.1"
 
     default_tor_args = "--Address ${NODEID} --Nickname ${NODEID} --DataDirectory shadow.data/hosts/${NODEID} --GeoIPFile "+INSTALLPREFIX+"share/geoip --defaults-torrc conf/tor.common.torrc"
+    if args.plugins:
+        default_tor_args += " --PluginsDirectory shadow.data/hosts/${NODEID}/plugins"
 
     # tor directory authorities - choose the fastest relays (no authority is an exit node)
     dirauths = [] # [name, v3ident, fingerprint] for torrc files
@@ -357,6 +361,13 @@ def generate(args):
         shutil.move("authority_certificate", "keys/.")
         shutil.move("authority_identity_key", "keys/.")
         shutil.move("authority_signing_key", "keys/.")
+        if args.plugins:
+            os.makedirs("plugins")
+            for x in os.listdir(args.plugins):
+                if os.path.isdir(args.plugins+"/"+x):
+                    shutil.copytree(args.plugins+'/'+x, 'plugins/'+x,
+                                    ignore=shutil.ignore_patterns('*.c', '*.h', 'Makefile'))
+       
         os.chdir("..")
         starttime += 1
         i += 1
@@ -405,6 +416,12 @@ def generate(args):
         rc, fp = getfp(args, '../authgen.torrc', name)
         guardfps.append(fp)
         exitfps.append(fp)
+        if args.plugins:
+            os.makedirs("plugins")
+            for x in os.listdir(args.plugins):
+                if os.path.isdir(args.plugins+"/"+x):
+                    shutil.copytree(args.plugins+'/'+x, 'plugins/'+x,
+                                    ignore=shutil.ignore_patterns('*.c', '*.h', 'Makefile'))
         if rc != 0: return rc
         os.chdir("..")
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
@@ -425,6 +442,12 @@ def generate(args):
         os.chdir(name)
         rc, fp = getfp(args, '../authgen.torrc', name)
         guardfps.append(fp)
+        if args.plugins:
+            os.makedirs("plugins")
+            for x in os.listdir(args.plugins):
+                if os.path.isdir(args.plugins+"/"+x):
+                    shutil.copytree(args.plugins+'/'+x, 'plugins/'+x,
+                                    ignore=shutil.ignore_patterns('*.c', '*.h', 'Makefile'))
         if rc != 0: return rc
         os.chdir("..")
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
@@ -445,6 +468,12 @@ def generate(args):
         os.chdir(name)
         rc, fp = getfp(args, '../authgen.torrc', name)
         exitfps.append(fp)
+        if args.plugins:
+            os.makedirs("plugins")
+            for x in os.listdir(args.plugins):
+                if os.path.isdir(args.plugins+"/"+x):
+                    shutil.copytree(args.plugins+'/'+x, 'plugins/'+x,
+                                    ignore=shutil.ignore_patterns('*.c', '*.h', 'Makefile'))
         if rc != 0: return rc
         os.chdir("..")
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
@@ -463,6 +492,12 @@ def generate(args):
         os.makedirs(name)
         os.chdir(name)
         rc, fp = getfp(args, '../authgen.torrc', name)
+        if args.plugins:
+            os.makedirs("plugins")
+            for x in os.listdir(args.plugins):
+                if os.path.isdir(args.plugins+"/"+x):
+                    shutil.copytree(args.plugins+'/'+x, 'plugins/'+x,
+                                    ignore=shutil.ignore_patterns('*.c', '*.h', 'Makefile'))
         if rc != 0: return rc
         os.chdir("..")
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
@@ -473,7 +508,7 @@ def generate(args):
         i += 1
 
     v3bwfile.close()
-    os.chdir("../..") # move out of initdata dir
+    # os.chdir("../..") # move out of initdata dir
 
     # clients
     nbulkclients = int(args.fbulk * args.nclients)
@@ -501,6 +536,15 @@ def generate(args):
     i = 1
     while i <= nwebclients:
         name = "webclient{0}".format(i)
+        if args.plugins:
+            os.makedirs(name)
+            os.chdir(name)
+            os.makedirs("plugins")
+            for x in os.listdir(args.plugins):
+                if os.path.isdir(args.plugins+"/"+x):
+                    shutil.copytree(args.plugins+'/'+x, 'plugins/'+x,
+                                    ignore=shutil.ignore_patterns('*.c', '*.h', 'Makefile'))
+            os.chdir('..')
         starttime = "{0}".format(int(round(clientStartTime)))
         torargs = "{0} -f conf/tor.client.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torwebclient.graphml.xml"
@@ -513,6 +557,15 @@ def generate(args):
     i = 1
     while i <= nbulkclients:
         name = "bulkclient{0}".format(i)
+        if args.plugins:
+            os.makedirs(name)
+            os.chdir(name)
+            os.makedirs("plugins")
+            for x in os.listdir(args.plugins):
+                if os.path.isdir(args.plugins+"/"+x):
+                    shutil.copytree(args.plugins+'/'+x, 'plugins/'+x,
+                                    ignore=shutil.ignore_patterns('*.c', '*.h', 'Makefile'))
+            os.chdir('..')
         starttime = "{0}".format(int(round(clientStartTime)))
         torargs = "{0} -f conf/tor.client.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torbulkclient.graphml.xml"
@@ -525,6 +578,15 @@ def generate(args):
     i = 1
     while i <= nperf50kclients:
         name = "perf50kclient{0}".format(i)
+        if args.plugins:
+            os.makedirs(name)
+            os.chdir(name)
+            os.makedirs("plugins")
+            for x in os.listdir(args.plugins):
+                if os.path.isdir(args.plugins+"/"+x):
+                    shutil.copytree(args.plugins+'/'+x, 'plugins/'+x,
+                                    ignore=shutil.ignore_patterns('*.c', '*.h', 'Makefile'))
+            os.chdir('..')
         starttime = "{0}".format(int(round(clientStartTime)))
         torargs = "{0} -f conf/tor.torperf.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torperf50kclient.graphml.xml"
@@ -537,6 +599,15 @@ def generate(args):
     i = 1
     while i <= nperf1mclients:
         name = "perf1mclient{0}".format(i)
+        if args.plugins:
+            os.makedirs(name)
+            os.chdir(name)
+            os.makedirs("plugins")
+            for x in os.listdir(args.plugins):
+                if os.path.isdir(args.plugins+"/"+x):
+                    shutil.copytree(args.plugins+'/'+x, 'plugins/'+x,
+                                    ignore=shutil.ignore_patterns('*.c', '*.h', 'Makefile'))
+            os.chdir('..')
         starttime = "{0}".format(int(round(clientStartTime)))
         torargs = "{0} -f conf/tor.torperf.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torperf1mclient.graphml.xml"
@@ -549,6 +620,15 @@ def generate(args):
     i = 1
     while i <= nperf5mclients:
         name = "perf5mclient{0}".format(i)
+        if args.plugins:
+            os.makedirs(name)
+            os.chdir(name)
+            os.makedirs("plugins")
+            for x in os.listdir(args.plugins):
+                if os.path.isdir(args.plugins+"/"+x):
+                    shutil.copytree(args.plugins+'/'+x, 'plugins/'+x,
+                                    ignore=shutil.ignore_patterns('*.c', '*.h', 'Makefile'))
+            os.chdir('..')
         starttime = "{0}".format(int(round(clientStartTime)))
         torargs = "{0} -f conf/tor.torperf.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torperf5mclient.graphml.xml"
@@ -558,6 +638,7 @@ def generate(args):
         clientStartTime += secondsPerClient
         i += 1
 
+    os.chdir("../..") # move out of initdata dir
     # generate torrc files now that we know the authorities and bridges
     bridges = None
     write_torrc_files(args, dirauths, bridgeauths, bridges, guardfps, exitfps)
@@ -699,9 +780,9 @@ def getClientCountryChoices(connectinguserspath):
             if dates_seen > 10:
                 break                            #if last 10 dates are analyzed, we're finished
 
-        if parts[2] != "??" and parts[2] != "":  #parts[2] == country
-            country = parts[2]
-            n = int(parts[7])                    #parts[7] == num of clients
+        if parts[1] != "??" and parts[1] != "":  #parts[1] == country
+            country = parts[1]
+            n = int(parts[2])                    #parts[2] == num of clients
             total += n
             if country not in counts: counts[country] = 0
             counts[country] += n
@@ -1038,8 +1119,12 @@ SocksPort 0\n' # note - also need exit policy
     epaccept = 'ExitPolicy "accept *:*"\n'
     maxdirty = 'MaxCircuitDirtiness 10 seconds\n'
     noguards = 'UseEntryGuards 0\n'
+    if args.plugins:
+        plugin = 'EnablePlugins 1'
 
     with open("conf/tor.common.torrc", 'wb') as f: print >>f, common
+    if args.plugins:
+        with open("conf/tor.common.torrc", 'wb') as f: print >>f, plugin
     with open("conf/tor.authority.torrc", 'wb') as f: print >>f, authorities + epreject
     if args.nbridgeauths > 0:
         with open("conf/tor.bridgeauthority.torrc", 'wb') as f: print >>f, bridgeauths + epreject
