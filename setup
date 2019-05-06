@@ -17,7 +17,7 @@ logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=loggin
 BUILD_PREFIX="./build"
 INSTALL_PREFIX=os.path.expanduser("~/.shadow")
 
-TOR_DEFAULT_VERSION="0.2.7.6"
+TOR_DEFAULT_VERSION="0.3.5.7"
 TOR_URL="https://archive.torproject.org/tor-package-archive/tor-{0}.tar.gz".format(TOR_DEFAULT_VERSION)
 TOR_URL_SIG="https://archive.torproject.org/tor-package-archive/tor-{0}.tar.gz.asc".format(TOR_DEFAULT_VERSION)
 
@@ -65,6 +65,11 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     # add building options
+    parser_build.add_argument('-y', '--assume-yes',
+        help="don't ask for confirmation while downloading dependencies",
+        action="store_true", dest="preapproved",
+        default=False)
+
     parser_build.add_argument('-p', '--prefix',
         help="configure PATH as Shadow root installation directory",
         metavar="PATH",
@@ -82,6 +87,12 @@ def main():
         metavar="PATH",
         action="append", dest="extra_libraries",
         default=[INSTALL_PREFIX+ "/lib", os.path.expanduser("~/.local/lib")])
+
+    parser_build.add_argument('-D', '--define',
+        help="append DEF to the list of define flags. useful when compiling a custom Tor with --tor-prefix",
+        metavar="DEF",
+        action="append", dest="extra_defines",
+        default=[])
 
     parser_build.add_argument('-c', '--clean',
         help="force a full rebuild by removing build cache",
@@ -102,7 +113,7 @@ def main():
         help="number of jobs to run simultaneously during the build",
         metavar="N", type=int,
         action="store", dest="njobs",
-        default=multiprocessing.cpu_count())
+        default=1)#multiprocessing.cpu_count())
 
     parser_build.add_argument('-o', '--profile',
         help="build in gprof profiling information when running Shadow",
@@ -112,6 +123,11 @@ def main():
     parser_build.add_argument('-t', '--test',
         help="build tests",
         action="store_true", dest="do_test",
+        default=False)
+
+    parser_build.add_argument('--tor-tracing',
+        help="add necessary build options to compile Tor tracing feature for Shadow",
+        action="store_true", dest="do_tor_tracing",
         default=False)
 
     parser_build.add_argument('--tor-prefix',
@@ -130,6 +146,18 @@ def main():
         help="append LIB to the list of libraries that get linked with shadow-plugin-tor. Useful when compiling and linking custom libraries.",
         metavar="LIB",
         action="append", dest="tor_libraries",
+        default=[])
+
+    parser_build.add_argument('--tor-config-option',
+        help="append option to Tor's configure script",
+        metavar="OPT",
+        action="append", dest="tor_config_opts",
+        default=[])
+
+    parser_build.add_argument('--tor-config-cflag',
+        help="append cflag to Tor's configure script",
+        metavar="CFLAG",
+        action="append", dest="tor_config_cflags",
         default=[])
 
     parser_build.add_argument('--libevent-prefix',
@@ -176,6 +204,7 @@ def main():
     r = args.func(args)
 
     logging.info("returning code '{0}'".format(r))
+    sys.exit(r)
 
 def dependencies(args):
     if args.prefix is not None: args.prefix = getfullpath(args.prefix)
@@ -219,7 +248,7 @@ def dependencies(args):
     os.chdir(dir)
 
     #configure = "./configure --prefix={0} --enable-shared=no CFLAGS=\"-fPIC -I{0} -g -pg\" LDFLAGS=\"-L{0}\" CPPFLAGS=\"-DUSE_DEBUG\"".format(args.prefix)
-    configure = "./configure --prefix={0} --enable-shared CFLAGS=\"-fPIC -I{0}\" LDFLAGS=\"-L{0}\"".format(args.prefix)
+    configure = "./configure --prefix={0} --enable-shared CFLAGS=\"-fPIC -I{0}/include/\" LDFLAGS=\"-L{0}/lib/\"".format(args.prefix)
 
     logging.info("now attempting to build libevent with '{0}'".format(configure))
     if automake(configure, "make", "make install") != 0:
@@ -273,6 +302,7 @@ def build(args):
     if args.do_profile: cmake_cmd += " -DSHADOW_PROFILE=ON"
     if args.export_libraries: cmake_cmd += " -DSHADOW_EXPORT=ON"
     if args.enable_evpcipher: cmake_cmd += " -DSHADOW_ENABLE_EVPCIPHER=ON"
+    if args.do_tor_tracing: cmake_cmd += " -DTOR_TRACING=ON"
 
     # we will run from build directory
     calledDirectory = os.getcwd()
@@ -307,24 +337,14 @@ def build(args):
     make_paths_absolute(args.extra_includes)
     make_paths_absolute(args.extra_libraries)
 
+    # add '-D' to defines
+    extra_defines = [ '-D' + d.strip() for d in args.extra_defines]
+
     # make sure we can access them from cmake
-    cmake_cmd += " -DCMAKE_EXTRA_INCLUDES=" + ';'.join(args.extra_includes)
-    cmake_cmd += " -DCMAKE_EXTRA_LIBRARIES=" + ';'.join(args.extra_libraries)
-    cmake_cmd += " -DCMAKE_TOR_LIBRARIES=" + ';'.join(args.tor_libraries)
-
-    # look for the clang/clang++ compilers
-    clangccpath = which("clang")
-    if clangccpath is None:
-        log("ERROR: can't find 'clang' compiler in your PATH! Is it installed? (Do you want the 'dependencies' subcommand?)")
-    clangcxxpath = which("clang++")
-    if clangcxxpath is None:
-        log("ERROR: can't find 'clang++' compiler in your PATH! Is it installed? (Do you want the 'dependencies' subcommand?)")
-    if clangccpath is None or clangcxxpath is None: return -1
-
-    # set clang/llvm as compiler
-    os.putenv("CC", clangccpath)
-    os.putenv("CXX", clangcxxpath)
-    #cmake_cmd += " -D_CMAKE_TOOLCHAIN_PREFIX=llvm-"
+    cmake_cmd += " -DCMAKE_EXTRA_INCLUDES="    + ';'.join(args.extra_includes)
+    cmake_cmd += " -DCMAKE_EXTRA_LIBRARIES="   + ';'.join(args.extra_libraries)
+    cmake_cmd += " -DCMAKE_EXTRA_DEFINES="     + ';'.join(extra_defines)
+    cmake_cmd += " -DCMAKE_TOR_LIBRARIES="     + ';'.join(args.tor_libraries)
 
     # call cmake to configure the make process, wait for completion
     logging.info("running \'{0}\' from \'{1}\'".format(cmake_cmd, os.getcwd()))
@@ -361,7 +381,7 @@ def install(args):
     logging.info("calling \'"+makeCommand+"\'")
     retcode = subprocess.call(makeCommand.strip().split())
     logging.info("make install returned " + str(retcode))
-    if retcode == 0: logging.info("now run \'shadow-tor\' from \'PREFIX/bin\' (check your PATH)")
+    if retcode == 0: logging.info("Successfully installed shadow-plugin-tor!")
 
     # go back to where we came from
     os.chdir(calledDirectory)
@@ -392,7 +412,7 @@ def setup_tor(args):
 
         # only download if we dont have the requested URL
         if not os.path.exists(target_tor):
-            if get("./", args.tor_url, args.tor_sig_url, args.keyring) == None:
+            if get("./", args.tor_url, args.tor_sig_url, args.keyring, args.preapproved) == None:
 #            if download(args.tor_url, target_tor) != 0:
                 logging.error("problem getting \'{0}\'".format(args.tor_url))
                 return -1
@@ -415,10 +435,17 @@ def setup_tor(args):
     if os.path.exists(args.tordir):
         os.chdir(args.tordir)
         if not os.path.exists(args.tordir+"/orconfig.h"):
+
+            opts = " ".join(args.tor_config_opts)
+            if args.do_tor_tracing: opts += " --enable-shadow-tracing"
+
             cflags = "-fPIC -fno-inline"
             if args.extra_includes is not None:
                 for i in args.extra_includes: cflags += " -I" + i.strip()
-            if args.do_debug: cflags += " -g"
+            if args.do_debug: cflags += " -ggdb"
+            if args.tor_config_cflags: cflags += " " + " ".join(args.tor_config_cflags)
+            if args.extra_defines: 
+                for d in args.extra_defines: cflags += " -D" + d.strip()
 
             ldflags = ""
             if args.extra_libraries is not None:
@@ -428,7 +455,7 @@ def setup_tor(args):
             if len(args.tor_libraries) > 0:
                 for l in args.tor_libraries: libs += " -l" + l.strip()
 
-            configure = "./configure --disable-transparent --disable-asciidoc --disable-gcc-hardening --disable-linker-hardening --disable-unittests CFLAGS=\"{0}\" LDFLAGS=\"{1}\" LIBS=\"{2}\"".format(cflags, ldflags, libs)
+            configure = "./configure --disable-asciidoc --disable-gcc-hardening --disable-linker-hardening --disable-unittests {0} CFLAGS=\"{1}\" LDFLAGS=\"{2}\" LIBS=\"{3}\"".format(opts, cflags, ldflags, libs)
 
             if args.libevent_prefix is not None: configure += " --with-libevent-dir=" + getfullpath(args.libevent_prefix)
             if args.openssl_prefix is not None: configure += " --with-openssl-dir=" + getfullpath(args.openssl_prefix)

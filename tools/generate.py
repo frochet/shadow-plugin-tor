@@ -13,6 +13,9 @@ INSTALLPREFIX="~/.shadow/"
 # distribution of CPU frequencies, in KHz
 CPUFREQS=["2200000", "2400000", "2600000", "2800000", "3000000", "3200000", "3400000"]
 
+# onionperf locations as of 2018-11-10
+ONIONPERF_COUNTRY_CODES=['HK', 'US', 'NL']
+
 NRELAYS = 10
 NBRIDGES = 0
 NAUTHS = 1
@@ -30,19 +33,19 @@ NPERF5M = 0.0
 class Relay():
     def __init__(self, ip, bw, isExit=False, isGuard=False):
         self.ip = ip
-        self.bwconsensus = int(bw) # in bytes, from consensus
+        self.bwconsensus = int(bw) # in KiB, from consensus
         self.isExit = isExit
         self.isGuard = isGuard
         self.code = None
-        
+
         self.bwrate = 0 # in bytes
         self.bwburst = 0 # in bytes
         self.bwtstamp = 0
-        
+
         self.maxobserved = 0 # in bytes
         self.maxread = 0 # in bytes
         self.maxwrite = 0 # in bytes
-        
+
         self.upload = 0 # in KiB
         self.download = 0 # in KiB
 
@@ -56,10 +59,10 @@ class Relay():
 
     def getBWConsensusArg(self):
         return 1000 if self.bwconsensus <= 0 else self.bwconsensus
-        
+
     def setRegionCode(self, code):
         self.code = code
-        
+
     def setLimits(self, bwrate, bwburst, bwtstamp):
         # defaults are 5MiB rate (5120000), 10MiB Burst (10240000)
         # minimums are 30KiB rate (30720)
@@ -67,36 +70,36 @@ class Relay():
             self.bwtstamp = bwtstamp
             self.bwrate = int(bwrate)
             self.bwburst = int(bwburst)
-        
+
     # max observed from server descriptor (min of max-read and max-write over 10 second intervals)
     def setMaxObserved(self, observed):
         self.maxobserved = max(self.maxobserved, observed)
-        
+
     # max read and write over 15 minute intervals from extra-infos
     def setMaxSpeeds(self, read, write):
         self.maxread = max(self.maxread, read)
         self.maxwrite = max(self.maxwrite, write)
-        
+
     def computeSpeeds(self):
         '''
         compute the link speeds to the ISP
-        
+
         we prefer relay measurements over the consensus, because the measurement
         is generally more accurate and unlikely malicious
-        
+
         we can estimate the link speed as the maximum bandwidth we've ever seen.
         this is usually the observed bandwidth from the server descriptor since
         its computed over 10 second intervals rather than the read/write histories
         from the extra-info which are averaged over 15 minutes.
-        
+
         since the observed bandwidth reported in the server descriptor is the minimum
         of the 10 second interval reads and writes, we use the extra-infos
         to determine which of read or write this observed bandwidth likely
         corresponds to. then we compute the missing observed value (the max of the
         10 second interval reads and writes) using the ratio of read/write from the
         extra-info.
-        
-        in the absence of historical data we fall back to the consensus bandwidth 
+
+        in the absence of historical data we fall back to the consensus bandwidth
         and hope that TorFlow accurately measured in this case
         '''
         if self.maxobserved > 0:
@@ -116,17 +119,17 @@ class Relay():
                 # ok, at least use our observed
                 bw = int(self.maxobserved / 1024.0)
                 self.download = bw
-                self.upload = bw                
+                self.upload = bw
         elif self.maxread > 0 and self.maxwrite > 0:
             # use read/write directly
             self.download = int(self.maxread / 1024.0)
-            self.upload = int(self.maxwrite / 1024.0)               
+            self.upload = int(self.maxwrite / 1024.0)
         else:
             # pity...
-            bw = int(self.bwconsensus / 1024.0)
+            bw = int(self.bwconsensus) # in KiB
             self.download = bw
             self.upload = bw
-            
+
         # the 'tiered' approach, not currently used
         '''
         if self.ispbandwidth <= 512: self.ispbandwidth = 512
@@ -139,7 +142,7 @@ class Relay():
         elif self.ispbandwidth <= 153600: self.ispbandwidth = 153600 # 150 MiB
         else: self.ispbandwidth = 204800
         '''
-        
+
     CSVHEADER = "IP,CCode,IsExit,IsGuard,Consensus(KB/s),Rate(KiB/s),Burst(KiB/s),MaxObserved(KiB/s),MaxRead(KiB/s),MaxWrite(KiB/s),LinkDown(KiB/s),LinkUp(KiB/s),Load(KiB/s)"
 
     def toCSV(self):
@@ -160,10 +163,10 @@ class GeoIPEntry():
         self.lownum = int(lownum)
         self.highnum = int(highnum)
         self.countrycode = countrycode
-    
+
 def main():
     ap = argparse.ArgumentParser(description='Generate shadow.config.xml file for Tor experiments in Shadow', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-        
+
     # configuration options
     ap.add_argument('-p', '--prefix', action="store", dest="prefix", help="PATH to base Shadow installation", metavar="PATH", default=INSTALLPREFIX)
     ap.add_argument('--nauths', action="store", type=int, dest="nauths", help="number N of total directory authorities for the generated topology", metavar='N', default=NAUTHS)
@@ -186,15 +189,15 @@ def main():
     ap.add_argument('descriptors', action="store", type=str, help="path to top-level directory containing current Tor server-descriptors", metavar='DESCRIPTORS', default=None)
     ap.add_argument('extrainfos', action="store", type=str, help="path to top-level directory containing current Tor extra-infos", metavar='EXTRAINFOS', default=None)
     ap.add_argument('connectingusers', action="store", type=str, help="path to csv containing Tor directly connecting user country data", metavar='CONNECTINGUSERS', default=None)
-     
+
     # get arguments, accessible with args.value
     args = ap.parse_args()
-    
+
     totalclientf = args.fweb + args.fbulk
     if totalclientf != 1.0:
         log("client fractions do not add to 1.0! please fix arguments...")
         return
-    
+
     # fixup paths from user
     args.prefix = os.path.abspath(os.path.expanduser(args.prefix))
     args.consensus = os.path.abspath(os.path.expanduser(args.consensus))
@@ -206,11 +209,11 @@ def main():
 
     args.torbin = which("tor")
     args.torgencertbin = which("tor-gencert")
-    if args.torbin is None or args.torgencertbin is None: 
+    if args.torbin is None or args.torgencertbin is None:
         log("please ensure 'tor' and 'tor-gencert' are in your 'PATH'")
         exit(-1)
     args.devnull = open("/dev/null", 'wb')
-    
+
     generate(args)
     log("finished generating {0}/shadow.config.xml".format(os.getcwd()))
 
@@ -233,7 +236,7 @@ def getfp(args, torrc, name, datadir="."):
 def generate(args):
     # get list of relays, sorted by increasing bandwidth
     validyear, validmonth, relays = parse_consensus(args.consensus)
-    
+
     # separate out relays
     exitguards, exits, guards, middles = [], [], [], []
     for relay in relays:
@@ -241,7 +244,7 @@ def generate(args):
         elif relay.isExit: exits.append(relay)
         elif relay.isGuard: guards.append(relay)
         else: middles.append(relay)
-        
+
     geoentries = getGeoEntries(args.geoippath)
 
     # sample for the relays we'll use for our nodes
@@ -249,7 +252,7 @@ def generate(args):
     n_guards = int(float(len(guards)) / float(len(relays)) * args.nrelays)
     n_exits = int(float(len(exits)) / float(len(relays)) * args.nrelays)
     n_middles = int(float(len(middles)) / float(len(relays)) * args.nrelays)
-    
+
     exitguards_nodes = getRelays(exitguards, n_exitguards, geoentries, args.descriptors, args.extrainfos, validyear, validmonth)
     guards_nodes = getRelays(guards, n_guards, geoentries, args.descriptors, args.extrainfos, validyear, validmonth)
     exits_nodes = getRelays(exits, n_exits, geoentries, args.descriptors, args.extrainfos, validyear, validmonth)
@@ -260,10 +263,10 @@ def generate(args):
     guards_nodes.reverse()
     exits_nodes.reverse()
     middles_nodes.reverse()
-    
+
     servers = getServers(geoentries, args.alexa)
     clientCountryCodes = getClientCountryChoices(args.connectingusers)
-    
+
     # output choices
     if not os.path.exists("conf"): os.makedirs("conf")
     with open("conf/relay.choices.csv", "wb") as f:
@@ -272,10 +275,13 @@ def generate(args):
         for r in guards_nodes: print >>f, r.toCSV()
         for r in exits_nodes: print >>f, r.toCSV()
         for r in middles_nodes: print >>f, r.toCSV()
-    
+
     # build the XML
     root = etree.Element("shadow")
-    
+    root.set("stoptime", "3600")
+    root.set("preload", "~/.shadow/lib/libshadow-interpose.so")
+    root.set("environment", "OPENSSL_ia32cap=~0x200000200000000;EVENT_NOSELECT=1;EVENT_NOPOLL=1;EVENT_NOKQUEUE=1;EVENT_NODEVPOLL=1;EVENT_NOEVPORT=1;EVENT_NOWIN32=1")
+
     servernames = []
     i = 0
     while i < args.nservers:
@@ -283,7 +289,7 @@ def generate(args):
         i += 1
         name = "server{0}".format(i)
         servernames.append(name)
-        e = etree.SubElement(root, "node")
+        e = etree.SubElement(root, "host")
         e.set("id", name)
         e.set("iphint", serverip)
         e.set("geocodehint", servercode)
@@ -292,7 +298,7 @@ def generate(args):
         e.set("bandwidthdown", "102400") # in KiB
         e.set("quantity", "1")
         e.set("cpufrequency", "10000000") # 10 GHz b/c we dont want bottlenecks
-        a = etree.SubElement(e, "application")
+        a = etree.SubElement(e, "process")
         a.set("plugin", "tgen")
         a.set("starttime", "1")
         a.set("arguments", "conf/tgen.server.graphml.xml")
@@ -301,17 +307,17 @@ def generate(args):
     with open("conf/shadowresolv.conf", "wb") as f: print >>f, "nameserver 127.0.0.1"
 
     default_tor_args = "--Address ${NODEID} --Nickname ${NODEID} --DataDirectory shadow.data/hosts/${NODEID} --GeoIPFile "+INSTALLPREFIX+"share/geoip --defaults-torrc conf/tor.common.torrc"
-    
+
     # tor directory authorities - choose the fastest relays (no authority is an exit node)
-    dirauths = [] # [name, v3ident, fingerprint] for torrc files
+    dirauths = [] # [name, ip_addr, v3ident, fingerprint] for torrc files
     os.makedirs("shadow.data.template/hosts")
     os.chdir("shadow.data.template/hosts")
 
     os.makedirs("torflowauthority")
     v3bwfile = open("torflowauthority/v3bw.init.consensus", "wb")
     os.symlink("v3bw.init.consensus", "torflowauthority/v3bw")
-    v3bwfile.write("1\n")
-    
+    v3bwfile.write("946684801\n")
+
     guardnames, guardfps = [], []
     exitnames, exitfps = [], []
 
@@ -325,13 +331,16 @@ def generate(args):
         auth.append(name)
         guardnames.append(name)
 
+        addr = "100.0.0.{0}".format(i)
+        auth.append(addr)
+
         # add to shadow hosts file
         #authority = guards_nodes.pop()
         #torargs = "{0} -f tor.authority.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, authority.getBWRateArg(), authority.getBWBurstArg()) # in bytes
         #addRelayToXML(root, starttime, torargs, None, None, name, authority.download, authority.upload, authority.ip, authority.code)
         authority = guards_nodes.pop()
         torargs = "{0} -f conf/tor.authority.torrc".format(default_tor_args)
-        addRelayToXML(root, starttime, torargs, None, name, download=6400, upload=6400)
+        addRelayToXML(root, starttime, torargs, None, name, download=6400, upload=6400, ip=addr)
 
         # generate keys for tor
         os.makedirs(name)
@@ -342,7 +351,7 @@ def generate(args):
         gencert = "{0} --create-identity-key -m 24 --passphrase-fd 0".format(args.torgencertbin)
         with open("../authgen.pw", 'r') as pwin: retcode = subprocess.call(shlex.split(gencert), stdin=pwin, stdout=args.devnull, stderr=subprocess.STDOUT)
         if retcode !=0: return retcode
-        with open("authority_certificate", 'r') as f: 
+        with open("authority_certificate", 'r') as f:
             for line in f:
                 if 'fingerprint' in line: auth.append(line.strip().split()[1]) # v3ident
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), authority.getBWConsensusArg(), name))
@@ -447,7 +456,7 @@ def generate(args):
         addRelayToXML(root, starttime, torargs, None, name, r.download, r.upload, r.ip, r.code)
         relayStartTime += secondsPerRelay
         i += 1
-    
+
     # middle relays
     i = 1
     for r in middles_nodes:
@@ -475,7 +484,7 @@ def generate(args):
     nperf50kclients = int(args.nperf50k)
     nperf1mclients = int(args.nperf1m)
     nperf5mclients = int(args.nperf5m)
-        
+
     # boot clients equally spread out between 15 and 25 minutes
     secondsPerClient = 600.0 / (nbulkclients+nwebclients+nperf50kclients+nperf1mclients+nperf5mclients)
     clientStartTime = 900.0 # minute 15
@@ -486,9 +495,9 @@ def generate(args):
         name = "torflowauthority"
         starttime = "{0}".format(int(round(clientStartTime)))
         torargs = "{0} -f conf/tor.client.torrc".format(default_tor_args) # in bytes
-        
+
         addRelayToXML(root, starttime, torargs, None, name, download=1048576, upload=1048576, code=choice(clientCountryCodes), torflowworkers=max(int(args.nrelays/50), 1))
-    
+
         clientStartTime += secondsPerClient
         i += 1
 
@@ -498,24 +507,24 @@ def generate(args):
         starttime = "{0}".format(int(round(clientStartTime)))
         torargs = "{0} -f conf/tor.client.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torwebclient.graphml.xml"
-        
+
         addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(clientCountryCodes))
-    
+
         clientStartTime += secondsPerClient
         i += 1
-    
+
     i = 1
     while i <= nbulkclients:
         name = "bulkclient{0}".format(i)
         starttime = "{0}".format(int(round(clientStartTime)))
         torargs = "{0} -f conf/tor.client.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torbulkclient.graphml.xml"
-        
+
         addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(clientCountryCodes))
-    
+
         clientStartTime += secondsPerClient
         i += 1
-        
+
     i = 1
     while i <= nperf50kclients:
         name = "perf50kclient{0}".format(i)
@@ -523,8 +532,8 @@ def generate(args):
         torargs = "{0} -f conf/tor.torperf.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torperf50kclient.graphml.xml"
 
-        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(clientCountryCodes))
-    
+        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(ONIONPERF_COUNTRY_CODES))
+
         clientStartTime += secondsPerClient
         i += 1
 
@@ -535,8 +544,8 @@ def generate(args):
         torargs = "{0} -f conf/tor.torperf.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torperf1mclient.graphml.xml"
 
-        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(clientCountryCodes))
-    
+        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(ONIONPERF_COUNTRY_CODES))
+
         clientStartTime += secondsPerClient
         i += 1
 
@@ -547,11 +556,11 @@ def generate(args):
         torargs = "{0} -f conf/tor.torperf.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torperf5mclient.graphml.xml"
 
-        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(clientCountryCodes))
-    
+        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(ONIONPERF_COUNTRY_CODES))
+
         clientStartTime += secondsPerClient
         i += 1
-                   
+
     # generate torrc files now that we know the authorities and bridges
     bridges = None
     write_torrc_files(args, dirauths, bridgeauths, bridges, guardfps, exitfps)
@@ -559,36 +568,36 @@ def generate(args):
     # finally, print the XML file
     with open("shadow.config.xml", 'wb') as fhosts:
         # plug-ins
-        
+
         e = etree.Element("plugin")
         e.set("id", "tgen")
-        e.set("path", "{0}plugins/libshadow-plugin-tgen.so".format(INSTALLPREFIX))
+        e.set("path", "{0}lib/libshadow-plugin-tgen.so".format(INSTALLPREFIX))
         root.insert(0, e)
-        
+
         # TODO enable when torflow works
         #e = etree.Element("plugin")
         #e.set("id", "torflow")
-        #e.set("path", "{0}plugins/libshadow-plugin-torflow.so".format(INSTALLPREFIX))
+        #e.set("path", "{0}lib/libshadow-plugin-torflow.so".format(INSTALLPREFIX))
         #root.insert(0, e)
 
         e = etree.Element("plugin")
         e.set("id", "torctl")
-        e.set("path", "{0}plugins/libshadow-plugin-torctl.so".format(INSTALLPREFIX))
+        e.set("path", "{0}lib/libshadow-plugin-torctl.so".format(INSTALLPREFIX))
+        root.insert(0, e)
+
+        e = etree.Element("plugin")
+        e.set("id", "tor-preload")
+        e.set("path", "{0}lib/libshadow-preload-tor.so".format(INSTALLPREFIX))
         root.insert(0, e)
 
         e = etree.Element("plugin")
         e.set("id", "tor")
-        e.set("path", "{0}plugins/libshadow-plugin-tor.so".format(INSTALLPREFIX))
+        e.set("path", "{0}lib/libshadow-plugin-tor.so".format(INSTALLPREFIX))
         root.insert(0, e)
-        
+
         # internet topology map
         e = etree.Element("topology")
         e.set("path", "{0}share/topology.graphml.xml".format(INSTALLPREFIX))
-        root.insert(0, e)
-        
-        # kill time
-        e = etree.Element("kill")
-        e.set("time", "3600")
         root.insert(0, e)
 
         # all our hosts
@@ -596,18 +605,18 @@ def generate(args):
 
 def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0, upload=0, ip=None, code=None, torflowworkers=1): # bandwidth in KiB
     # node
-    e = etree.SubElement(root, "node")
+    e = etree.SubElement(root, "host")
     e.set("id", name)
     if ip is not None and ip != "127.0.0.1": e.set("iphint", ip)
     if code is not None: e.set("geocodehint", code)
-    
+
     if 'relay' in name or '4uthority' in name: e.set("typehint", "relay")
     elif 'client' in name: e.set("typehint", "client")
-    
+
     # bandwidth is optional in XML, will be assigned based on cluster if not given
     if download > 0: e.set("bandwidthdown", "{0}".format(download)) # in KiB
     if upload > 0: e.set("bandwidthup", "{0}".format(upload)) # in KiB
-    
+
     e.set("quantity", "1")
     e.set("cpufrequency", choice(CPUFREQS))
 
@@ -632,7 +641,7 @@ def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0, upload=0
 #                a = etree.SubElement(e, "application")
 #                a.set("plugin", "torctl")
 #                a.set("starttime", "{0}".format(int(starttime)+1))
-#                a.set("arguments", "localhost {0} STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,BUILDTIMEOUT_SET,CLIENTS_SEEN,GUARD,CELL_STATS,TB_EMPTY".format(controlport))
+#                a.set("arguments", "localhost {0} STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW".format(controlport))
             serverport, controlport, socksport = 8080, 9050, 9000
             a = etree.SubElement(e, "application")
             a.set("plugin", "filetransfer")
@@ -640,27 +649,30 @@ def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0, upload=0
             a.set("arguments", "server {0} ~/.shadow/share/".format(serverport))
             a = etree.SubElement(e, "application")
             a.set("plugin", "tor")
+            a.set("preload", "tor-preload")
             a.set("starttime", "{0}".format(int(starttime)))
             a.set("arguments", "{0} --ControlPort {1} --SocksPort {2} --SocksTimeout 5".format(torargs, controlport, socksport))
             a = etree.SubElement(e, "application")
             a.set("plugin", "torctl")
             a.set("starttime", "{0}".format(int(starttime)+1))
-            a.set("arguments", "localhost {0} STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,BUILDTIMEOUT_SET,CLIENTS_SEEN,GUARD,CELL_STATS,TB_EMPTY".format(controlport))
+            a.set("arguments", "localhost {0} STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW".format(controlport))
             a = etree.SubElement(e, "application")
             a.set("plugin", "torflow")
             a.set("starttime", "{0}".format(int(starttime)+60))
             a.set("arguments", "shadow.data/hosts/torflowauthority/v3bw 60 {0} 50 0.5 {1} {2} torflowauthority:{3}".format(torflowworkers, controlport, socksport, serverport))
         else:
-            a = etree.SubElement(e, "application")
+            a = etree.SubElement(e, "process")
             a.set("plugin", "tor")
+            a.set("preload", "tor-preload")
             a.set("starttime", "{0}".format(int(starttime)))
             a.set("arguments", torargs)
-            a = etree.SubElement(e, "application")
-            a.set("plugin", "torctl")
-            a.set("starttime", "{0}".format(int(starttime)+1))
-            a.set("arguments", "localhost 9051 STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,BUILDTIMEOUT_SET,CLIENTS_SEEN,GUARD,CELL_STATS,TB_EMPTY")
+            if 'relay' in name or '4uthority' in name:
+                a = etree.SubElement(e, "process")
+                a.set("plugin", "torctl")
+                a.set("starttime", "{0}".format(int(starttime)+1))
+                a.set("arguments", "localhost 9051 BW")
     if tgenargs is not None:
-        a = etree.SubElement(e, "application")
+        a = etree.SubElement(e, "process")
         a.set("plugin", "tgen")
         a.set("starttime", "{0}".format(int(starttime)+300))
         a.set("arguments", tgenargs)
@@ -669,9 +681,9 @@ def getClientCountryChoices(connectinguserspath):
     lines = None
     with open(connectinguserspath, 'rb') as f:
         lines = f.readlines()
-    
+
     assert len(lines) > 11
-    header = lines[0].strip().split(',')
+    lines = lines[6:] # skip file comments and csv header
 
     total = 0
     counts = dict()
@@ -680,7 +692,7 @@ def getClientCountryChoices(connectinguserspath):
     linei = 0
     while True:
         linei -= 1                               #get next line above
-        
+
         line = lines[linei]
         parts = line.strip().split(',')
 
@@ -702,20 +714,20 @@ def getClientCountryChoices(connectinguserspath):
     for c in counts:
         frac = float(counts[c]) / float(total)
         n = int(frac * 1000)
-        
+
         code = c.upper()
 #        if code == "US" or code == "A1" or code == "A2": code = "USMN"
         code = "{0}".format(code)
-        
+
         for i in xrange(n):
             codes.append(code)
-    
+
     return codes
 
 def ip2long(ip):
     """
     Convert a IPv4 address into a 32-bit integer.
-    
+
     @param ip: quad-dotted IPv4 address
     @type ip: str
     @return: network byte order 32-bit integer
@@ -724,14 +736,14 @@ def ip2long(ip):
     ip_array = ip.split('.')
     ip_long = long(ip_array[0]) * 16777216 + long(ip_array[1]) * 65536 + long(ip_array[2]) * 256 + long(ip_array[3])
     return ip_long
-    
+
 def getClusterCode(geoentries, ip):
     # use geoip entries to find our cluster code for IP
     ipnum = ip2long(ip)
     #print "{0} {1}".format(ip, ipnum)
     # theres probably a faster way of doing this, but this is python and i dont care
     for entry in geoentries:
-        if ipnum >= entry.lownum and ipnum <= entry.highnum: 
+        if ipnum >= entry.lownum and ipnum <= entry.highnum:
 #            if entry.countrycode == "US": return "USMN" # we have no USUS code (USMN gets USCENTRAL)
             return "{0}".format(entry.countrycode)
     log("Warning: Cant find code for IP '{0}' Num '{1}', defaulting to 'US'".format(ip, ipnum))
@@ -753,7 +765,7 @@ def getServers(geoentries, alexapath):
     servers['allips'] = []
     servers['codes'] = {}
     servers['iptocode'] = {}
-    
+
     with open(alexapath, 'rb') as f:
         for line in f:
             parts = line.strip().split(',')
@@ -763,49 +775,49 @@ def getServers(geoentries, alexapath):
 
             code = getClusterCode(geoentries, ip)
             servers['iptocode'][ip] = code
-            
+
             if code not in servers['codes']:
                 servers['codes'][code] = {}
                 servers['codes'][code]['ips'] = []
                 servers['codes'][code]['index'] = 0
-            
+
             servers['codes'][code]['ips'].append(ip)
-            
+
     return servers
 
 def chooseServer(servers):
     # first get a random code
     tempip = choice(servers['allips'])
     code = servers['iptocode'][tempip]
-    
+
     # now we have our code, get the next index in this code's list
     s = servers['codes'][code]
     i = s['index'] % (len(s['ips']))
     ip = s['ips'][i]
     s['index'] += 1
-    
+
     return ip, code
-    
+
 def getRelays(relays, k, geoentries, descriptorpath, extrainfopath, validyear, validmonth):
     sample = sample_relays(relays, k)
-    
+
     # maps for easy relay lookup while parsing descriptors
     ipmap, fpmap = dict(), dict()
     for s in sample:
-        if s.ip not in ipmap: 
+        if s.ip not in ipmap:
             ipmap[s.ip] = s
-        
+
     # go through all the descriptors and find the bandwidth rate, burst, and
     # history from the most recent descriptor of each relay in our sample
     for root, _, files in os.walk(descriptorpath):
-        for filename in files: 
+        for filename in files:
             fullpath = os.path.join(root, filename)
             with open(fullpath, 'rb') as f:
                 rate, burst, observed = 0, 0, 0
                 ip = ""
                 fingerprint = None
                 published = None
-                
+
                 for line in f:
                     parts = line.strip().split()
                     if len(parts) == 0: continue
@@ -818,32 +830,34 @@ def getRelays(relays, k, geoentries, descriptorpath, extrainfopath, validyear, v
                         rate, burst, observed = int(parts[1]), int(parts[2]), int(parts[3])
                     elif parts[0] == "opt" and parts[1] == "fingerprint":
                         fingerprint = "".join(parts[2:])
-                
+                    elif parts[0] == "fingerprint":
+                        fingerprint = "".join(parts[1:])
+
                 if ip not in ipmap: continue
-                
+
                 relay = ipmap[ip]
                 # we want to know about every fingerprint
                 if fingerprint is not None: fpmap[fingerprint] = relay
                 # we want to know every observed bandwidth to est. link speed
                 relay.setMaxObserved(observed)
-                # we only want the latest rate and burst settings 
+                # we only want the latest rate and burst settings
                 if published is not None:
                     datet = datetime.strptime(published, "%Y-%m-%d %H:%M:%S")
                     unixt = time.mktime(datet.timetuple())
                     relay.setLimits(rate, burst, unixt)
-                        
+
     # now check for extra info docs for our chosen relays, so we get read and write histories
     # here the published time doesnt matter b/c we are trying to estimate the
     # relay's ISP link speed
     for root, _, files in os.walk(extrainfopath):
-        for filename in files: 
+        for filename in files:
             fullpath = os.path.join(root, filename)
             with open(fullpath, 'rb') as f:
                 maxwrite, maxread = 0, 0
                 totalwrite, totalread = 0, 0
                 fingerprint = None
                 published = None
-                
+
                 for line in f:
                     parts = line.strip().split()
                     if len(parts) == 0: continue
@@ -852,7 +866,7 @@ def getRelays(relays, k, geoentries, descriptorpath, extrainfopath, validyear, v
                         fingerprint = parts[2]
                         if fingerprint not in fpmap: break
                     elif parts[0] == "published":
-                        # only count data from our modeled month towards our totals 
+                        # only count data from our modeled month towards our totals
                         published = "{0} {1}".format(parts[1], parts[2])
                         datet = datetime.strptime(published, "%Y-%m-%d %H:%M:%S")
                         if datet.year != validyear or datet.month != validmonth:
@@ -871,33 +885,33 @@ def getRelays(relays, k, geoentries, descriptorpath, extrainfopath, validyear, v
                         nbytes = speeds.split(',')
                         maxread = int(max([int(i) for i in nbytes]) / seconds)
                         totalread = int(float(sum([int(i) for i in nbytes])) / float(seconds*len(nbytes)))
-                        
+
                 if fingerprint is not None and fingerprint in fpmap:
                     relay = fpmap[fingerprint]
                     relay.setMaxSpeeds(maxread, maxwrite)
                     if published is not None: relay.rates.append(totalread + totalwrite)
-                        
+
     # make sure we found some info for all of them, otherwise use defaults
     for s in sample:
         s.setRegionCode(getClusterCode(geoentries, s.ip))
         s.computeSpeeds()
-    
+
     return sample
-    
+
 def sample_relays(relays, k):
     """
     sample k of n relays
     split list into k buckts, take the median from each bucket
     this provides the statistically best fit to the original list
-    
+
     relays list should be sorted by bandwidth
     """
     n = len(relays)
-    if k >= n: 
+    if k >= n:
+        print "warning: choosing only {0} of the requested {1} relays".format(n, k)
         k = n
-        print "warning: choosing only {0} of {1} relays".format(k, n)
     assert k <= n
-    
+
     t = 0
     bins = []
     for _ in range(k):
@@ -906,12 +920,12 @@ def sample_relays(relays, k):
             abin.append(relays[t])
             t += 1
         bins.append(abin)
-    
+
     sample = []
     for abin in bins: sample.append(abin[len(abin)/2])
-    
+
     return sample
-    
+
 def parse_consensus(consensus_path):
     relays = []
     ip = ""
@@ -920,7 +934,7 @@ def parse_consensus(consensus_path):
     isGuard = False
 
     validyear, validmonth = None, None
-    
+
     with open(consensus_path) as f:
         for line in f:
             if validyear == None and "valid-after" in line:
@@ -929,8 +943,8 @@ def parse_consensus(consensus_path):
                 validyear, validmonth = int(dates[0]), int(dates[1])
             elif line[0:2] == "r ":
                 # append the relay that we just built up
-                if ip != "": 
-                    r = Relay(ip, bw, isExit, isGuard)                 
+                if ip != "":
+                    r = Relay(ip, bw, isExit, isGuard)
                     relays.append(r)
                 # reset for the next relay
                 bw = 0.0
@@ -942,7 +956,7 @@ def parse_consensus(consensus_path):
                 if " Guard " in line: isGuard = True
             elif line[0:2] == "w ":
                 bw = float(line.strip().split()[1].split("=")[1]) # KiB
-    
+
     return validyear, validmonth, sorted(relays, key=lambda relay: relay.getBWConsensusArg())
 
 def write_torrc_files(args, dirauths, bridgeauths, bridges, guardids, exitids):
@@ -954,9 +968,9 @@ def write_torrc_files(args, dirauths, bridgeauths, bridges, guardids, exitids):
     if len(bridgeauths) > 0:
         dirauthkw = 'AlternateDirAuthority'
     for auth in dirauths:
-        auths_lines += "{3} {4} v3ident={0} orport=9111 {1}:9112 {2}\n".format(auth[1], auth[0], auth[2], dirauthkw, auth[0])
+        auths_lines += "{} {} v3ident={} orport=9111 {}:9112 {}\n".format(dirauthkw, auth[0], auth[2], auth[1], auth[3])
     for auth in bridgeauths:
-        auths_lines += "AlternateBridgeAuthority {4} orport=9111 bridge {1}:9112 {2}\n".format(None, auth[0], auth[2], None, auth[0])
+        auths_lines += "AlternateBridgeAuthority {} orport=9111 bridge {}:9112 {}\n".format(auth[0], auth[1], auth[3])
     bridges_lines = ""
     '''FIXME
     for bridge in bridges:
@@ -972,10 +986,11 @@ ServerDNSTestAddresses {1}\n\
 ServerDNSAllowBrokenConfig 1\n\
 ServerDNSDetectHijacking 0\n\
 NumCPUs 1\n\
-Log info stdout\n\
+Log notice stdout\n\
 SafeLogging 0\n\
+LogTimeGranularity 1\n\
 WarnUnsafeSocks 0\n\
-ContactInfo shadow-support@cs.umn.edu\n\
+ContactInfo https://github.com/shadow/shadow-plugin-tor/issues\n\
 DynamicDHGroups 0\n\
 DisableDebuggerAttachment 0\n\
 CellStatistics 1\n\
@@ -984,6 +999,8 @@ EntryStatistics 1\n\
 ExitPortStatistics 1\n\
 ExtraInfoStatistics 1\n\
 CircuitPriorityHalflife 30\n\
+PathBiasUseThreshold 10000\n\
+PathBiasCircThreshold 10000\n\
 ControlPort 9051\n'.format(auths_lines, auth_name_csv)
     clients = \
 'ORPort 0\n\
@@ -993,6 +1010,7 @@ SocksPort 9000\n\
 SocksListenAddress 127.0.0.1\n\
 BandwidthRate 5120000\n\
 BandwidthBurst 10240000\n'
+    torbrowser = '{}MaxCircuitDirtiness 30 seconds\n'.format(clients)
     bridgeclients = bridges_lines
     relays = \
 'ORPort 9111\n\
@@ -1036,6 +1054,7 @@ SocksPort 0\n' # note - also need exit policy
     if args.nbridges > 0:
         with open("conf/tor.bridge.torrc", 'wb') as f: print >>f, relays + epreject
     with open("conf/tor.client.torrc", 'wb') as f: print >>f, clients
+    with open("conf/tor.browser.torrc", 'wb') as f: print >>f, torbrowser
     if args.nbridgeclients > 0:
         with open("conf/tor.bridgeclient.torrc", 'wb') as f: print >>f, clients + bridgeclients
     with open("conf/tor.torperf.torrc", 'wb') as f: print >>f, clients + maxdirty + noguards
