@@ -246,6 +246,23 @@ def generate(args):
         else: middles.append(relay)
 
     geoentries = getGeoEntries(args.geoippath)
+    
+    #Computing Total bandwidth for each roles 
+    # XXX should I move that as part of parse_consensus function?
+    # Those BWs are part of the equations to compute bandwidth-weights, and we
+    # should account for them when scaling down the network or we skew more
+    # than necessarly the path selection
+    G, D, E , M = 0, 0, 0, 0
+    for r in exitguards:
+        D += r.getBWConsensusArg()
+    for r in guards:
+        G += r.getBWConsensusArg()
+    for r in exits:
+        E += r.getBWConsensusArg()
+    for r in middles:
+        M += r.getBWConsensusArg()
+
+    rfraction = args.nrelays/float(len(relays))
 
     # sample for the relays we'll use for our nodes
     n_exitguards = int(float(len(exitguards)) / float(len(relays)) * args.nrelays)
@@ -257,6 +274,23 @@ def generate(args):
     guards_nodes = getRelays(guards, n_guards, geoentries, args.descriptors, args.extrainfos, validyear, validmonth)
     exits_nodes = getRelays(exits, n_exits, geoentries, args.descriptors, args.extrainfos, validyear, validmonth)
     middles_nodes = getRelays(middles, n_middles, geoentries, args.descriptors, args.extrainfos, validyear, validmonth)
+    # Computing Total banwidth of the scaled down network
+    G_sh, D_sh, E_sh, M_sh =  0, 0, 0, 0
+    for r in exitguards_nodes:
+        D_sh += r.getBWConsensusArg()
+    for r in guards_nodes:
+        G_sh += r.getBWConsensusArg()
+    for r in exits_nodes:
+        E_sh += r.getBWConsensusArg()
+    for r in middles_nodes:
+        M_sh += r.getBWConsensusArg()
+    print("nrelays/relays: {}/{}".format(args.nrelays, len(relays)))
+    print("GuardExit sampling discrepency: {}%".format(100-100*D_sh/(D*n_exitguards/float(len(exitguards)))))
+    print("Guard sampling discrepency: {}%".format(100-100*G_sh/float(G*n_guards/float(len(guards)))))
+    print("Exit sampling discrepency: {}%".format(100-100*E_sh/float(E*n_exits/float(len(exits)))))
+    print("Middle sampling discrepency: {}%".format(100-100*M_sh/float(M*n_middles/float(len(middles)))))
+    
+    sys.exit()
 
     # get the fastest nodes at the front
     exitguards_nodes.reverse()
@@ -907,7 +941,7 @@ def sample_relays(relays, k):
     relays list should be sorted by bandwidth
     """
     n = len(relays)
-    if k >= n:
+    if k > n:
         print "warning: choosing only {0} of the requested {1} relays".format(n, k)
         k = n
     assert k <= n
