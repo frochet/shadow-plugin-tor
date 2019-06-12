@@ -1,0 +1,7 @@
+
+for topology boostrap:
+
+- Build the distribution of users per available cities
+- Allocate users based on a weighted random choice forall available cities
+- Build penalty matrix for these cities only
+- Add a symlink within each Tor client directory to the .sol files with the new set of weights
