@@ -284,12 +284,42 @@ def generate(args):
         E_sh += r.getBWConsensusArg()
     for r in middles_nodes:
         M_sh += r.getBWConsensusArg()
+    ## Apply a post-sampling correction -- Add bandwidth proportionally to
+    #the existing bandwidth;
+    #XXX should I modify download and upload to scale according to the same fraction?
+    D_missing = D*n_exitguards/float(len(exitguards)) - D_sh
+    #print("Missing {} D bandwidth".format(D_missing))
+    for r in exitguards_nodes:
+        r.bwconsensus += int((float(r.bwconsensus)*D_missing)/D_sh)
+    G_missing = G*n_guards/float(len(guards)) - G_sh
+    #print("Missing {} G bandwidth".format(G_missing))
+    for r in guards_nodes:
+        r.bwconsensus += int((float(r.bwconsensus)*G_missing)/G_sh)
+    E_missing = E*n_exits/float(len(exits)) - E_sh
+    #print("Missing {} E bandwidth".format(E_missing))
+    for r in exits_nodes:
+        r.bwconsensus += int((float(r.bwconsensus)*E_missing)/E_sh)
+    M_missing = M*n_middles/float(len(middles)) - M_sh
+    #print("Missing {} M bandwidth".format(M_missing))
+    for r in middles_nodes:
+        r.bwconsensus += int((float(r.bwconsensus)*M_missing)/M_sh)
+    
+    G_sh, D_sh, E_sh, M_sh =  0, 0, 0, 0
+    for r in exitguards_nodes:
+        D_sh += r.getBWConsensusArg()
+    for r in guards_nodes:
+        G_sh += r.getBWConsensusArg()
+    for r in exits_nodes:
+        E_sh += r.getBWConsensusArg()
+    for r in middles_nodes:
+        M_sh += r.getBWConsensusArg()
+    
     print("nrelays/relays: {}/{}".format(args.nrelays, len(relays)))
     print("GuardExit sampling discrepency: {}%".format(100-100*D_sh/(D*n_exitguards/float(len(exitguards)))))
     print("Guard sampling discrepency: {}%".format(100-100*G_sh/float(G*n_guards/float(len(guards)))))
     print("Exit sampling discrepency: {}%".format(100-100*E_sh/float(E*n_exits/float(len(exits)))))
     print("Middle sampling discrepency: {}%".format(100-100*M_sh/float(M*n_middles/float(len(middles)))))
-    
+
     sys.exit()
 
     # get the fastest nodes at the front
