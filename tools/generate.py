@@ -182,6 +182,7 @@ def main():
     ap.add_argument('--nperf5m', action="store", type=float, dest="nperf5m", help="number N of 5MiB perf clients", metavar='F', default=NPERF5M)
     ap.add_argument('--nservers', action="store", type=int, dest="nservers", help="number N of fileservers", metavar='N', default=NSERVERS)
     ap.add_argument('--geoippath', action="store", dest="geoippath", help="path to geoip file, needed to convert IPs to cluster codes", default=INSTALLPREFIX+"share/geoip")
+    ap.add_argument('--plugins', action="store", type=str, help="path to plugin directory containing all plugins build", default=None)
 
     # positional args (required)
     ap.add_argument('alexa', action="store", type=str, help="path to an ALEXA file (produced with contrib/parsealexa.py)", metavar='ALEXA', default=None)
@@ -190,7 +191,6 @@ def main():
     ap.add_argument('extrainfos', action="store", type=str, help="path to top-level directory containing current Tor extra-infos", metavar='EXTRAINFOS', default=None)
     ap.add_argument('connectingusers', action="store", type=str, help="path to csv containing Tor directly connecting user country data", metavar='CONNECTINGUSERS', default=None)
     
-    ap.add_argument('plugins', action="store", type=str, help="path to plugin directory containing all plugins build", metavar='PLUGINS', default=None)
     # get arguments, accessible with args.value
     args = ap.parse_args()
 
@@ -207,7 +207,8 @@ def main():
     args.extrainfos = os.path.abspath(os.path.expanduser(args.extrainfos))
     args.connectingusers = os.path.abspath(os.path.expanduser(args.connectingusers))
     args.geoippath = os.path.abspath(os.path.expanduser(args.geoippath))
-    args.plugins = os.path.abspath(os.path.expanduser(args.plugins))
+    if args.plugins:
+        args.plugins = os.path.abspath(os.path.expanduser(args.plugins))
 
     args.torbin = which("tor")
     args.torgencertbin = which("tor-gencert")
@@ -1120,11 +1121,9 @@ SocksPort 0\n' # note - also need exit policy
     maxdirty = 'MaxCircuitDirtiness 10 seconds\n'
     noguards = 'UseEntryGuards 0\n'
     if args.plugins:
-        plugin = 'EnablePlugins 1'
+        common += 'EnablePlugins 1\n'
 
     with open("conf/tor.common.torrc", 'wb') as f: print >>f, common
-    if args.plugins:
-        with open("conf/tor.common.torrc", 'wb') as f: print >>f, plugin
     with open("conf/tor.authority.torrc", 'wb') as f: print >>f, authorities + epreject
     if args.nbridgeauths > 0:
         with open("conf/tor.bridgeauthority.torrc", 'wb') as f: print >>f, bridgeauths + epreject
