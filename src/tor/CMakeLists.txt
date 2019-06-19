@@ -188,6 +188,14 @@ if(version_check_passed AND (EXISTS ${TOR_ROOT_DIR}/src/trunnel/hs))
     list(APPEND tortrunnel_sources ${tortrunnelhs_sources})
 endif()
 
+aux_source_directory(${TOR_ROOT_DIR}/src/ubpf ubpf_sources)
+aux_source_directory(${TOR_ROOT_DIR}/src/ubpf/vm ubpfvm_sources)
+list(REMOVE_ITEM ubpfvm_sources 
+  ${TOR_ROOT_DIR}/src/ubpf/vm/test.c
+  )
+aux_source_directory(${TOR_ROOT_DIR}/src/ubpf/vm/inc ubpfvminc_sources)
+
+
 # store additional sources so files can be variably included
 set(additional_sources "")
 
@@ -220,6 +228,7 @@ add_cflags("-std=gnu99 -w -fPIC -fno-inline -fno-strict-aliasing -U_FORTIFY_SOUR
 add_shadow_plugin(shadow-plugin-tor 
     shadowtor-main.c ${toror_sources} ${torcommon_sources} 
     ${torext_sources} ${torextcurve_sources} ${torextedref_sources} ${torexteddon_sources}
+    ${ubpf_source} ${ubpfvm_sources} ${ubpfvminc_sources}
     ${tortrunnel_sources} ${torexttrunnel_sources} ${additional_sources})
 
 if(TARGET torkeccak)
