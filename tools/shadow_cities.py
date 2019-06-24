@@ -13,7 +13,7 @@ import sys, os
 import argparse
 import pandas as pd
 import pdb
-import json
+import pickle, json
 
 class City:
 
@@ -51,16 +51,16 @@ def main(args):
                     location = int(line.split('<data key="d2">')[1].split("</data>")[0]) # location info
                 else:
                     continue
-                countrycode = int(f.readline().split('<data key="d3">')[1].split("</data>")[0])
+                countrycode = f.readline().split('<data key="d3">')[1].split("</data>")[0]
                 city = City(location, countrycode, None, None, None)
                 if location not in cities:
                     cities[location] = city 
                 ripe_probes[ip] = RipeProbe(ip, city)
             elif "edge source" in line: #building the penalty matrix
 		# first parse info
-                tab = line.split(" ")
-                source = tab[1].split("source=")[1]
-                dest = tab[2].split("target=")[1]
+                tab = line.split(" ")[4:]
+                source = tab[1].split("source=")[1].strip('source="')
+                dest = tab[2].split("target=")[1].strip('target=>\n"')
                 line = f.readline() #latency
                 if "d6" in line:
                     latency = float(line.split('<data key="d6">')[1].split("</data>")[0])
@@ -68,12 +68,12 @@ def main(args):
                     print("No latency information for this edge?")
                 line = f.readline() #loss
                 if "d7" in line:
-                    loss = float(line.split('<data key="d6">')[1].split("</data>")[0])	
+                    loss = float(line.split('<data key="d7">')[1].split("</data>")[0])	
 		
                 if source not in pmatrix:
-                    pmatrix[source] = {dest: latency*loss}
+                    pmatrix[source] = {dest: latency*loss*10000} #10000 is some scale factor
                 else:
-                    pmatrix[source][dest] = latency*loss
+                    pmatrix[source][dest] = latency*loss*10000
 
             line = f.readline()
 		
@@ -86,9 +86,8 @@ def main(args):
         if int(cityinfo['City Code'][i]) in cities:
             cities[int(cityinfo['City Code'][i])] = cityinfo[2020][i]
             print("adding info for city {0}".format(cityinfo['City Code'][i]))
-
-    with open('cityinfo_shadow.json', 'w') as jsonfile: 
-        json.dump(cities, jsonfile)
+    with open('cityinfo_shadow.pickle', 'wb') as picklefile: 
+        pickle.dump(cities, picklefile, pickle.HIGHEST_PROTOCOL)
     with open('pmatrix_shadow.json', 'w') as jsonfile:
         json.dump(pmatrix, jsonfile)
 

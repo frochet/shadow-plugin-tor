@@ -6,6 +6,7 @@ from datetime import datetime
 from numpy import mean
 from lxml import etree
 from networkx import DiGraph, write_graphml
+import pickle
 
 # This should NOT be expanded, we'll use this directly in the XML file
 INSTALLPREFIX="~/.shadow/"
@@ -275,6 +276,13 @@ def generate(args):
         for r in guards_nodes: print >>f, r.toCSV()
         for r in exits_nodes: print >>f, r.toCSV()
         for r in middles_nodes: print >>f, r.toCSV()
+    
+    # pickel output 
+    with open("conf/relay.choices.pickle", "wb") as picklef:
+        pickle.dump(exitguards_nodes, picklef, pickle.HIGHEST_PROTOCOL)
+        pickle.dump(guards_nodes, picklef, pickle.HIGHEST_PROTOCOL)
+        pickle.dump(exits_nodes, picklef, pickle.HIGHEST_PROTOCOL)
+        pickle.dump(middles_nodes, picklef, pickle.HIGHEST_PROTOCOL)
 
     # build the XML
     root = etree.Element("shadow")
