@@ -314,7 +314,7 @@ def generate(args):
         default_tor_args += " --PluginsDirectory shadow.data/hosts/${NODEID}/plugins"
 
     # tor directory authorities - choose the fastest relays (no authority is an exit node)
-    dirauths = [] # [name, v3ident, fingerprint] for torrc files
+    dirauths = [] # [name, ip_addr, v3ident, fingerprint] for torrc files
     os.makedirs("shadow.data.template/hosts")
     os.chdir("shadow.data.template/hosts")
 
@@ -336,13 +336,16 @@ def generate(args):
         auth.append(name)
         guardnames.append(name)
 
+        addr = "100.0.0.{0}".format(i)
+        auth.append(addr)
+
         # add to shadow hosts file
         #authority = guards_nodes.pop()
         #torargs = "{0} -f tor.authority.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, authority.getBWRateArg(), authority.getBWBurstArg()) # in bytes
         #addRelayToXML(root, starttime, torargs, None, None, name, authority.download, authority.upload, authority.ip, authority.code)
         authority = guards_nodes.pop()
         torargs = "{0} -f conf/tor.authority.torrc".format(default_tor_args)
-        addRelayToXML(root, starttime, torargs, None, name, download=6400, upload=6400)
+        addRelayToXML(root, starttime, torargs, None, name, download=6400, upload=6400, ip=addr)
 
         # generate keys for tor
         os.makedirs(name)
@@ -650,7 +653,7 @@ def generate(args):
 
         e = etree.Element("plugin")
         e.set("id", "tgen")
-        e.set("path", "{0}lib/libshadow-plugin-tgen.so".format(INSTALLPREFIX))
+        e.set("path", "{0}bin/tgen".format(INSTALLPREFIX))
         root.insert(0, e)
 
         # TODO enable when torflow works
@@ -720,7 +723,7 @@ def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0, upload=0
 #                a = etree.SubElement(e, "application")
 #                a.set("plugin", "torctl")
 #                a.set("starttime", "{0}".format(int(starttime)+1))
-#                a.set("arguments", "localhost {0} STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,BUILDTIMEOUT_SET,CLIENTS_SEEN,GUARD,CELL_STATS,TB_EMPTY".format(controlport))
+#                a.set("arguments", "localhost {0} STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW".format(controlport))
             serverport, controlport, socksport = 8080, 9050, 9000
             a = etree.SubElement(e, "application")
             a.set("plugin", "filetransfer")
@@ -734,7 +737,7 @@ def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0, upload=0
             a = etree.SubElement(e, "application")
             a.set("plugin", "torctl")
             a.set("starttime", "{0}".format(int(starttime)+1))
-            a.set("arguments", "localhost {0} STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW,BUILDTIMEOUT_SET,CLIENTS_SEEN,GUARD,CELL_STATS,TB_EMPTY".format(controlport))
+            a.set("arguments", "localhost {0} STREAM,CIRC,CIRC_MINOR,ORCONN,BW,STREAM_BW,CIRC_BW,CONN_BW".format(controlport))
             a = etree.SubElement(e, "application")
             a.set("plugin", "torflow")
             a.set("starttime", "{0}".format(int(starttime)+60))
@@ -762,7 +765,7 @@ def getClientCountryChoices(connectinguserspath):
         lines = f.readlines()
 
     assert len(lines) > 11
-    header = lines[0].strip().split(',')
+    lines = lines[6:] # skip file comments and csv header
 
     total = 0
     counts = dict()
@@ -954,6 +957,7 @@ def getRelays(relays, k, geoentries, descriptorpath, extrainfopath, validyear, v
                         if len(parts) < 6: continue # see if we can get other info from this doc
                         seconds = float(int(parts[3][1:]))
                         speeds = parts[5]
+                        if 'info' in speeds: continue
                         nbytes = speeds.split(',')
                         maxwrite = int(max([int(i) for i in nbytes]) / seconds)
                         totalwrite = int(float(sum([int(i) for i in nbytes])) / float(seconds*len(nbytes)))
@@ -961,6 +965,7 @@ def getRelays(relays, k, geoentries, descriptorpath, extrainfopath, validyear, v
                         if len(parts) < 6: continue # see if we can get other info from this doc
                         seconds = float(int(parts[3][1:]))
                         speeds = parts[5]
+                        if 'info' in speeds: continue
                         nbytes = speeds.split(',')
                         maxread = int(max([int(i) for i in nbytes]) / seconds)
                         totalread = int(float(sum([int(i) for i in nbytes])) / float(seconds*len(nbytes)))
@@ -1047,9 +1052,9 @@ def write_torrc_files(args, dirauths, bridgeauths, bridges, guardids, exitids):
     if len(bridgeauths) > 0:
         dirauthkw = 'AlternateDirAuthority'
     for auth in dirauths:
-        auths_lines += "{3} {4} v3ident={0} orport=9111 {1}:9112 {2}\n".format(auth[1], auth[0], auth[2], dirauthkw, auth[0])
+        auths_lines += "{} {} v3ident={} orport=9111 {}:9112 {}\n".format(dirauthkw, auth[0], auth[2], auth[1], auth[3])
     for auth in bridgeauths:
-        auths_lines += "AlternateBridgeAuthority {4} orport=9111 bridge {1}:9112 {2}\n".format(None, auth[0], auth[2], None, auth[0])
+        auths_lines += "AlternateBridgeAuthority {} orport=9111 bridge {}:9112 {}\n".format(auth[0], auth[1], auth[3])
     bridges_lines = ""
     '''FIXME
     for bridge in bridges:
@@ -1067,8 +1072,9 @@ ServerDNSDetectHijacking 0\n\
 NumCPUs 1\n\
 Log notice stdout\n\
 SafeLogging 0\n\
+LogTimeGranularity 1\n\
 WarnUnsafeSocks 0\n\
-ContactInfo shadow-support@cs.umn.edu\n\
+ContactInfo https://github.com/shadow/shadow-plugin-tor/issues\n\
 DynamicDHGroups 0\n\
 DisableDebuggerAttachment 0\n\
 CellStatistics 1\n\
