@@ -38,6 +38,7 @@ class Relay():
         self.isExit = isExit
         self.isGuard = isGuard
         self.code = None
+        self.name = None #Should be unique in shadow simu
 
         self.bwrate = 0 # in bytes
         self.bwburst = 0 # in bytes
@@ -276,7 +277,19 @@ def generate(args):
         for r in guards_nodes: print >>f, r.toCSV()
         for r in exits_nodes: print >>f, r.toCSV()
         for r in middles_nodes: print >>f, r.toCSV()
-    
+    ## should be the same order
+    i = 1
+    for r in exitguards_nodes:
+        r.name = "relayexitguard{0}".format(i)
+    i = 1
+    for r in guards_nodes:
+        r.name = "relayguard{0}".format(i)
+    i = 1
+    for r in exits_nodes:
+        r.name = "relayexit{0}".format(i)
+    for r in middles_nodes:
+        r.name = "relaymiddle{0}".format(i)
+
     # pickel output 
     with open("conf/relay.choices.pickle", "wb") as picklef:
         pickle.dump(exitguards_nodes, picklef, pickle.HIGHEST_PROTOCOL)
