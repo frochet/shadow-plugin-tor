@@ -7,6 +7,8 @@ from numpy import mean
 from lxml import etree
 from networkx import DiGraph, write_graphml
 import pickle
+import json
+import pandas as pd
 
 # This should NOT be expanded, we'll use this directly in the XML file
 INSTALLPREFIX="~/.shadow/"
@@ -184,6 +186,9 @@ def main():
     ap.add_argument('--nperf5m', action="store", type=float, dest="nperf5m", help="number N of 5MiB perf clients", metavar='F', default=NPERF5M)
     ap.add_argument('--nservers', action="store", type=int, dest="nservers", help="number N of fileservers", metavar='N', default=NSERVERS)
     ap.add_argument('--geoippath', action="store", dest="geoippath", help="path to geoip file, needed to convert IPs to cluster codes", default=INSTALLPREFIX+"share/geoip")
+    ap.add_argument('--citytraits', action="store", dest="citytraits",
+                    help="path to the city traits file needed to map Shadow's" 
+                    " citycode to countries", default=""
 
     # positional args (required)
     ap.add_argument('alexa', action="store", type=str, help="path to an ALEXA file (produced with contrib/parsealexa.py)", metavar='ALEXA', default=None)
@@ -698,52 +703,75 @@ def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0, upload=0
         a.set("starttime", "{0}".format(int(starttime)+300))
         a.set("arguments", tgenargs)
 
-def getClientCountryChoices(connectinguserspath):
-    lines = None
-    with open(connectinguserspath, 'rb') as f:
-        lines = f.readlines()
+def parse_userstats(filename): 
+    country_to_users = dict()
+    with open(filename, 'r') as f:
+        reader = csv.reader(f, skipinitialspace=True, delimiter=',')
+        #skip header
+        for _ in range(0, 6):
+            next(reader)
+        for row in reader:
+            if row[1].upper() not in country_to_users:
+                country_to_users[row[1].upper()] = int(row[2])
+            else:
+                country_to_users[row[1].upper()] += int(row[2])
+    #ignore tot, ??, a1 and a2
+    if '' in country_to_users:
+        del country_to_users['']
+    if '??' in country_to_users:
+        del country_to_users['??']
+    if 'a1' in country_to_users:
+        del country_to_users['a1']
+    if 'a2' in country_to_users:
+        del country_to_users['a2']
+    #Normalize
+    tot = sum(country_to_users.values())
+    return [(k, v/tot) for k, v in country_to_users.items()]
 
-    assert len(lines) > 11
-    lines = lines[6:] # skip file comments and csv header
+def get_city_info(filename_city_traits, filename_city_db):
+    """
+        get info from ONU's city file and add population from the top-x cities
+        for each shadow city
+    """
+    with open(filename_city_traits) as f:
+        city_trait = json.load(f)
+    ## Get info from the ONU db file
+    xls_population = pd.ExcelFile(filename_city_db)
+    cityinfo = xls_population.parse(0, header=16)
+    cities = {}
+    for i in range(0, len(cityinfo['Index'])):
+        country = pycountry.countries.get(name=cityinfo['Country or area'][i])
+        if country:
+            country = country.alpha_2.upper()
+        else:
+            raise ValueError("Country unknown: {}".format(cityinfo['Country or \
+                                                                   area'][i]))
+        cityname = cityinfo['Urban Agglomeration'][i]
+        if not cities[country]:
+            cities[country] = {}
+        cities[country][cityname] = int(cityinfo[2020][i])
+    for citycode in city_trait:
+        ccode = city_trait[citycode]["iso_codes"][0] 
+        if len(cities[ccode]) > 0:
+            #Todo
+            city_trait[population] = cities[ccode].pop()
+        else:
+            print("No more cities of" \
+                  " {}".format(city_trait[citycode]["iso_codes"][0]))
+    
 
-    total = 0
-    counts = dict()
-    dates_seen = 0          #used to get the data for the last 10 dates recorded
-    last_date_seen = ''
-    linei = 0
-    while True:
-        linei -= 1                               #get next line above
 
-        line = lines[linei]
-        parts = line.strip().split(',')
+def getClientCityChoices(citytraits, country_to_users):
+    """
+        Get the probability distribution of shadow cities of a given Shadow
+        client
 
-        if parts[0] != last_date_seen:
-            dates_seen += 1
-            last_date_seen = parts[0]
-            if dates_seen > 10:
-                break                            #if last 10 dates are analyzed, we're finished
-
-        if parts[1] != "??" and parts[1] != "":  #parts[1] == country
-            country = parts[1]
-            n = int(parts[2])                    #parts[2] == num of clients
-            total += n
-            if country not in counts: counts[country] = 0
-            counts[country] += n
-
-
-    codes = []
-    for c in counts:
-        frac = float(counts[c]) / float(total)
-        n = int(frac * 1000)
-
-        code = c.upper()
-#        if code == "US" or code == "A1" or code == "A2": code = "USMN"
-        code = "{0}".format(code)
-
-        for i in xrange(n):
-            codes.append(code)
-
-    return codes
+        This distribution is computed from the join distribution of city
+        densities with the distribution of Tor users per country. That is,
+        a Tor user from a given country gets a higher probability to land on a
+        bigger city.
+    """
+    pass
 
 def ip2long(ip):
     """
