@@ -315,7 +315,7 @@ def generate(args):
         pickle.dump(exits_nodes, picklef, pickle.HIGHEST_PROTOCOL)
         pickle.dump(middles_nodes, picklef, pickle.HIGHEST_PROTOCOL)
     with open("conf/client-distribution.pickle", "wb") as picklef:
-        pickle.dump(dict(citychoices), pickle.HIGHEST_PROTOCOL)
+        pickle.dump(dict(citychoices), picklef, pickle.HIGHEST_PROTOCOL)
     # build the XML
     root = etree.Element("shadow")
     root.set("stoptime", "3600")
@@ -714,7 +714,10 @@ def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0,
             a.set("plugin", "tor")
             a.set("preload", "tor-preload")
             a.set("starttime", "{0}".format(int(starttime)))
-            a.set("arguments", torargs)
+            if relay_is_client:
+                a.set("arguments", "{0} --location {1}".format(torargs, code))
+            else:
+                a.set("arguments", torargs)
             if 'relay' in name or '4uthority' in name:
                 a = etree.SubElement(e, "process")
                 a.set("plugin", "torctl")
