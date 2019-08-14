@@ -150,7 +150,7 @@ class Relay():
         else: self.ispbandwidth = 204800
         '''
 
-    CSVHEADER = "IP,CCode,IsExit,IsGuard,Consensus(KB/s),Rate(KiB/s),Burst(KiB/s),MaxObserved(KiB/s),MaxRead(KiB/s),MaxWrite(KiB/s),LinkDown(KiB/s),LinkUp(KiB/s),Load(KiB/s)"
+    CSVHEADER = "Name,IP,CCode,IsExit,IsGuard,Consensus(KB/s),Rate(KiB/s),Burst(KiB/s),MaxObserved(KiB/s),MaxRead(KiB/s),MaxWrite(KiB/s),LinkDown(KiB/s),LinkUp(KiB/s),Load(KiB/s)"
 
     def toCSV(self):
         c = str(int(self.bwconsensus/1000.0)) # should be KB, just like in consensus
@@ -314,7 +314,8 @@ def generate(args):
         pickle.dump(guards_nodes, picklef, pickle.HIGHEST_PROTOCOL)
         pickle.dump(exits_nodes, picklef, pickle.HIGHEST_PROTOCOL)
         pickle.dump(middles_nodes, picklef, pickle.HIGHEST_PROTOCOL)
-
+    with open("conf/client-distribution.pickle", "wb") as picklef:
+        pickle.dump(dict(citychoices), pickle.HIGHEST_PROTOCOL)
     # build the XML
     root = etree.Element("shadow")
     root.set("stoptime", "3600")
