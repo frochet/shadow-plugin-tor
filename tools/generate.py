@@ -1,7 +1,8 @@
 #!/usr/bin/env python2.7
 
 import os, sys, subprocess, argparse, time, shlex, shutil
-from random import choice
+import random
+from numpy.random import choice
 from datetime import datetime
 from numpy import mean
 from lxml import etree
@@ -160,7 +161,7 @@ class Relay():
         lup = str(int(self.upload))
         load = str(0)
         if len(self.rates) > 0: load = str(int(mean(self.rates)/1024.0))
-        return ",".join([self.ip, self.code, str(self.isExit), str(self.isGuard), c, r, b, mo, mr, mw, ldown, lup, load])
+        return ",".join([self.name, self.ip, self.code, str(self.isExit), str(self.isGuard), c, r, b, mo, mr, mw, ldown, lup, load])
 
 class GeoIPEntry():
     def __init__(self, lownum, highnum, countrycode):
@@ -188,7 +189,11 @@ def main():
     ap.add_argument('--geoippath', action="store", dest="geoippath", help="path to geoip file, needed to convert IPs to cluster codes", default=INSTALLPREFIX+"share/geoip")
     ap.add_argument('--citytraits', action="store", dest="citytraits",
                     help="path to the city traits file needed to map Shadow's" 
-                    " citycode to countries", default=""
+                    " citycode to countries",
+                    default="../resource/city_traits.json")
+    ap.add_argument('--ONUdb', action="store", dest="ONUdb", help="path to the"
+                    "csv data file containing city population",
+                    default="../resource/WUP2018-F12-Cities_Over_300K.xls")
 
     # positional args (required)
     ap.add_argument('alexa', action="store", type=str, help="path to an ALEXA file (produced with contrib/parsealexa.py)", metavar='ALEXA', default=None)
@@ -272,16 +277,13 @@ def generate(args):
     middles_nodes.reverse()
 
     servers = getServers(geoentries, args.alexa)
-    clientCountryCodes = getClientCountryChoices(args.connectingusers)
+    country_to_users = parse_userstats(args.connectingusers)
+    citytraits = get_city_info(args.citytraits, args.ONUdb)
+    citychoices = getClientCityChoices(citytraits, country_to_users)
+    cities = [citycode for (citycode, weight) in citychoices]
+    weights = [weight for (citycode, weight) in citychoices]
+    # clientCountryCodes = getClientCountryChoices(args.connectingusers)
 
-    # output choices
-    if not os.path.exists("conf"): os.makedirs("conf")
-    with open("conf/relay.choices.csv", "wb") as f:
-        print >>f, Relay.CSVHEADER
-        for r in exitguards_nodes: print >>f, r.toCSV()
-        for r in guards_nodes: print >>f, r.toCSV()
-        for r in exits_nodes: print >>f, r.toCSV()
-        for r in middles_nodes: print >>f, r.toCSV()
     ## should be the same order
     i = 1
     for r in exitguards_nodes:
@@ -295,6 +297,15 @@ def generate(args):
     for r in middles_nodes:
         r.name = "relaymiddle{0}".format(i)
 
+    # output choices
+    if not os.path.exists("conf"): os.makedirs("conf")
+    with open("conf/relay.choices.csv", "wb") as f:
+        print >>f, Relay.CSVHEADER
+        for r in exitguards_nodes: print >>f, r.toCSV()
+        for r in guards_nodes: print >>f, r.toCSV()
+        for r in exits_nodes: print >>f, r.toCSV()
+        for r in middles_nodes: print >>f, r.toCSV()
+    
     # pickel output 
     with open("conf/relay.choices.pickle", "wb") as picklef:
         pickle.dump(exitguards_nodes, picklef, pickle.HIGHEST_PROTOCOL)
@@ -522,7 +533,10 @@ def generate(args):
         starttime = "{0}".format(int(round(clientStartTime)))
         torargs = "{0} -f conf/tor.client.torrc".format(default_tor_args) # in bytes
 
-        addRelayToXML(root, starttime, torargs, None, name, download=1048576, upload=1048576, code=choice(clientCountryCodes), torflowworkers=max(int(args.nrelays/50), 1))
+        addRelayToXML(root, starttime, torargs, None, name, download=1048576,
+                      upload=1048576, code=choice(cities, p=weights),
+                      torflowworkers=max(int(args.nrelays/50), 1),
+                      relay_is_client=True)
 
         clientStartTime += secondsPerClient
         i += 1
@@ -534,7 +548,8 @@ def generate(args):
         torargs = "{0} -f conf/tor.client.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torwebclient.graphml.xml"
 
-        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(clientCountryCodes))
+        addRelayToXML(root, starttime, torargs, tgenargs, name,
+                      code=choice(cities, p=weights), relay_is_client=True)
 
         clientStartTime += secondsPerClient
         i += 1
@@ -546,7 +561,8 @@ def generate(args):
         torargs = "{0} -f conf/tor.client.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torbulkclient.graphml.xml"
 
-        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(clientCountryCodes))
+        addRelayToXML(root, starttime, torargs, tgenargs, name,
+                      code=choice(cities, p=weights), relay_is_client=True)
 
         clientStartTime += secondsPerClient
         i += 1
@@ -570,7 +586,7 @@ def generate(args):
         torargs = "{0} -f conf/tor.torperf.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torperf1mclient.graphml.xml"
 
-        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(ONIONPERF_COUNTRY_CODES))
+        addRelayToXML(root, starttime, torargs, tgenargs, name, code=random.choice(ONIONPERF_COUNTRY_CODES))
 
         clientStartTime += secondsPerClient
         i += 1
@@ -582,7 +598,7 @@ def generate(args):
         torargs = "{0} -f conf/tor.torperf.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torperf5mclient.graphml.xml"
 
-        addRelayToXML(root, starttime, torargs, tgenargs, name, code=choice(ONIONPERF_COUNTRY_CODES))
+        addRelayToXML(root, starttime, torargs, tgenargs, name, code=random.choice(ONIONPERF_COUNTRY_CODES))
 
         clientStartTime += secondsPerClient
         i += 1
@@ -629,12 +645,16 @@ def generate(args):
         # all our hosts
         print >>fhosts, (etree.tostring(root, pretty_print=True, xml_declaration=False))
 
-def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0, upload=0, ip=None, code=None, torflowworkers=1): # bandwidth in KiB
+def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0,
+                  upload=0, ip=None, code=None, torflowworkers=1,
+                  relay_is_client=False): # bandwidth in KiB
     # node
     e = etree.SubElement(root, "host")
     e.set("id", name)
     if ip is not None and ip != "127.0.0.1": e.set("iphint", ip)
-    if code is not None: e.set("geocodehint", code)
+    if code is not None:
+        if relay_is_client: e.set("citycodehint", code)
+        else: e.set("geocodehint", code)
 
     if 'relay' in name or '4uthority' in name: e.set("typehint", "relay")
     elif 'client' in name: e.set("typehint", "client")
@@ -644,7 +664,7 @@ def addRelayToXML(root, starttime, torargs, tgenargs, name, download=0, upload=0
     if upload > 0: e.set("bandwidthup", "{0}".format(upload)) # in KiB
 
     e.set("quantity", "1")
-    e.set("cpufrequency", choice(CPUFREQS))
+    e.set("cpufrequency", random.choice(CPUFREQS))
 
     # applications - wait 5 minutes to start applications
     if torargs is not None:
@@ -754,10 +774,11 @@ def get_city_info(filename_city_traits, filename_city_db):
         ccode = city_trait[citycode]["iso_codes"][0] 
         if len(cities[ccode]) > 0:
             #Todo
-            city_trait[population] = cities[ccode].pop()
+            city_trait[population] = cities[ccode].sort().pop()
         else:
             print("No more cities of" \
                   " {}".format(city_trait[citycode]["iso_codes"][0]))
+    return city_trait
     
 
 
@@ -771,7 +792,14 @@ def getClientCityChoices(citytraits, country_to_users):
         a Tor user from a given country gets a higher probability to land on a
         bigger city.
     """
-    pass
+    citychoices = {}
+    for citytrait in citytraits:
+        citychoices[citytrait] =\
+        citytraits[citytrait].population*country_to_users[citytraits[citytrait].iso_codes]
+    #Normalize
+    tot = sum(citychoices.values())
+    return [(k, v/tot) for k, v in citychoices.items()]
+
 
 def ip2long(ip):
     """
@@ -836,7 +864,7 @@ def getServers(geoentries, alexapath):
 
 def chooseServer(servers):
     # first get a random code
-    tempip = choice(servers['allips'])
+    tempip = random.choice(servers['allips'])
     code = servers['iptocode'][tempip]
 
     # now we have our code, get the next index in this code's list
