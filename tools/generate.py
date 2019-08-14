@@ -10,7 +10,9 @@ from networkx import DiGraph, write_graphml
 import pickle
 import json
 import pandas as pd
-
+import csv
+import pycountry
+import pdb
 # This should NOT be expanded, we'll use this directly in the XML file
 INSTALLPREFIX="~/.shadow/"
 
@@ -190,10 +192,10 @@ def main():
     ap.add_argument('--citytraits', action="store", dest="citytraits",
                     help="path to the city traits file needed to map Shadow's" 
                     " citycode to countries",
-                    default="../resource/city_traits.json")
+                    default="../../resource/city_traits.json")
     ap.add_argument('--ONUdb', action="store", dest="ONUdb", help="path to the"
                     "csv data file containing city population",
-                    default="../resource/WUP2018-F12-Cities_Over_300K.xls")
+                    default="../../resource/WUP2018-F12-Cities_Over_300K.xls")
 
     # positional args (required)
     ap.add_argument('alexa', action="store", type=str, help="path to an ALEXA file (produced with contrib/parsealexa.py)", metavar='ALEXA', default=None)
@@ -746,7 +748,7 @@ def parse_userstats(filename):
         del country_to_users['a2']
     #Normalize
     tot = sum(country_to_users.values())
-    return [(k, v/tot) for k, v in country_to_users.items()]
+    return dict([(k, float(v)/tot) for k, v in country_to_users.items()])
 
 def get_city_info(filename_city_traits, filename_city_db):
     """
@@ -764,20 +766,24 @@ def get_city_info(filename_city_traits, filename_city_db):
         if country:
             country = country.alpha_2.upper()
         else:
-            raise ValueError("Country unknown: {}".format(cityinfo['Country or \
-                                                                   area'][i]))
+            pdb.set_trace()
+            raise ValueError("Country unknown: {}".format(cityinfo['Country or area'][i]))
         cityname = cityinfo['Urban Agglomeration'][i]
-        if not cities[country]:
-            cities[country] = {}
-        cities[country][cityname] = int(cityinfo[2020][i])
+        if country not in cities:
+            cities[country] = []
+        cities[country].append((cityname, int(cityinfo[2020][i])))
     for citycode in city_trait:
         ccode = city_trait[citycode]["iso_codes"][0] 
-        if len(cities[ccode]) > 0:
-            #Todo
-            city_trait[population] = cities[ccode].sort().pop()
+        if ccode not in cities:
+            city_trait[citycode]["population"] = (None, 200) #arbitrary low
         else:
-            print("No more cities of" \
+            if len(cities[ccode]) > 0:
+                cities[ccode].sort(key=lambda x: x[1])
+                city_trait[citycode]["population"] = cities[ccode].pop()
+            else:
+                print("No more cities of" \
                   " {}".format(city_trait[citycode]["iso_codes"][0]))
+                city_trait[citycode]["population"] = (None, 200) #arbitrary low
     return city_trait
     
 
@@ -795,10 +801,10 @@ def getClientCityChoices(citytraits, country_to_users):
     citychoices = {}
     for citytrait in citytraits:
         citychoices[citytrait] =\
-        citytraits[citytrait].population*country_to_users[citytraits[citytrait].iso_codes]
+        citytraits[citytrait]["population"][1]*country_to_users[citytraits[citytrait]["iso_codes"][0]]
     #Normalize
     tot = sum(citychoices.values())
-    return [(k, v/tot) for k, v in citychoices.items()]
+    return [(k, float(v)/tot) for k, v in citychoices.items()]
 
 
 def ip2long(ip):
