@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+
 
 import os, sys, subprocess, argparse, time, shlex, shutil
 import random
@@ -153,7 +153,7 @@ class Relay():
     CSVHEADER = "Name,IP,CCode,IsExit,IsGuard,Consensus(KB/s),Rate(KiB/s),Burst(KiB/s),MaxObserved(KiB/s),MaxRead(KiB/s),MaxWrite(KiB/s),LinkDown(KiB/s),LinkUp(KiB/s),Load(KiB/s)"
 
     def toCSV(self):
-        c = str(int(self.bwconsensus/1000.0)) # should be KB, just like in consensus
+        c = str(int(self.bwconsensus)) 
         r = str(int(self.bwrate/1024.0))
         b = str(int(self.bwburst/1024.0))
         mo = str(int(self.maxobserved/1024.0))
@@ -290,14 +290,18 @@ def generate(args):
     i = 1
     for r in exitguards_nodes:
         r.name = "relayexitguard{0}".format(i)
+        i+=1
     i = 1
     for r in guards_nodes:
         r.name = "relayguard{0}".format(i)
+        i+=1
     i = 1
     for r in exits_nodes:
         r.name = "relayexit{0}".format(i)
+        i+=1
     for r in middles_nodes:
         r.name = "relaymiddle{0}".format(i)
+        i+=1
 
     # output choices
     if not os.path.exists("conf"): os.makedirs("conf")
@@ -314,8 +318,8 @@ def generate(args):
         pickle.dump(guards_nodes, picklef, pickle.HIGHEST_PROTOCOL)
         pickle.dump(exits_nodes, picklef, pickle.HIGHEST_PROTOCOL)
         pickle.dump(middles_nodes, picklef, pickle.HIGHEST_PROTOCOL)
-    with open("conf/client-distribution.pickle", "wb") as picklef:
-        pickle.dump(dict(citychoices), picklef, pickle.HIGHEST_PROTOCOL)
+    with open("conf/client-distribution.json", "wb") as jsonf:
+        json.dump(dict(citychoices), jsonf)
     # build the XML
     root = etree.Element("shadow")
     root.set("stoptime", "3600")
