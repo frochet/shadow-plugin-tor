@@ -196,6 +196,8 @@ def main():
     ap.add_argument('--ONUdb', action="store", dest="ONUdb", help="path to the"
                     "csv data file containing city population",
                     default="../../resource/WUP2018-F12-Cities_Over_300K.xls")
+    ap.add_argument('--linkbw_in_consweight', action="store_true",
+                    default=False)
 
     # positional args (required)
     ap.add_argument('alexa', action="store", type=str, help="path to an ALEXA file (produced with contrib/parsealexa.py)", metavar='ALEXA', default=None)
@@ -457,7 +459,10 @@ def generate(args):
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f conf/tor.exitguard.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
-        addRelayToXML(root, starttime, torargs, None, name, r.download, r.upload, r.ip, r.code)
+        if args.linkbw_in_consweight:
+            addRelayToXML(root, starttime, torargs, None, name, r.bwconsenus, r.bwconsensus, r.ip, r.code)
+        else:
+            addRelayToXML(root, starttime, torargs, None, name, r.download, r.upload, r.ip, r.code)
         relayStartTime += secondsPerRelay
         i += 1
 
@@ -477,7 +482,11 @@ def generate(args):
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f conf/tor.guard.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
-        addRelayToXML(root, starttime, torargs, None, name, r.download, r.upload, r.ip, r.code)
+        if args.linkbw_in_consweight:
+            addRelayToXML(root, starttime, torargs, None, name, r.bwconsensus,
+                          r.bwconsensus, r.ip, r.code)
+        else:
+            addRelayToXML(root, starttime, torargs, None, name, r.download, r.upload, r.ip, r.code)
         relayStartTime += secondsPerRelay
         i += 1
 
@@ -497,7 +506,11 @@ def generate(args):
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f conf/tor.exit.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
-        addRelayToXML(root, starttime, torargs, None, name, r.download, r.upload, r.ip, r.code)
+        if args.linkbw_in_consweight:
+            addRelayToXML(root, starttime, torargs, None, name, r.bwconsensus,
+                          r.bwconsensus, r.ip, r.code)
+        else:
+            addRelayToXML(root, starttime, torargs, None, name, r.download, r.upload, r.ip, r.code)
         relayStartTime += secondsPerRelay
         i += 1
 
@@ -515,7 +528,11 @@ def generate(args):
         v3bwfile.write("node_id=${0}\tbw={1}\tnick={2}\n".format(fp.replace(" ", ""), r.getBWConsensusArg(), name))
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f conf/tor.middle.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
-        addRelayToXML(root, starttime, torargs, None, name, r.download, r.upload, r.ip, r.code)
+        if args.linkbw_in_consweight:
+            addRelayToXML(root, starttime, torargs, None, name, r.bwconsensus,
+                          r.bwconsensus, r.ip, r.code)
+        else:
+            addRelayToXML(root, starttime, torargs, None, name, r.download, r.upload, r.ip, r.code)
         relayStartTime += secondsPerRelay
         i += 1
 
