@@ -150,7 +150,7 @@ class Relay():
         else: self.ispbandwidth = 204800
         '''
 
-    CSVHEADER = "Name,IP,CCode,IsExit,IsGuard,Consensus(KB/s),Rate(KiB/s),Burst(KiB/s),MaxObserved(KiB/s),MaxRead(KiB/s),MaxWrite(KiB/s),LinkDown(KiB/s),LinkUp(KiB/s),Load(KiB/s)"
+    CSVHEADER = "Name,IP,CCode,IsExit,IsGuard,ConsensusWeight,Rate(KiB/s),Burst(KiB/s),MaxObserved(KiB/s),MaxRead(KiB/s),MaxWrite(KiB/s),LinkDown(KiB/s),LinkUp(KiB/s),Load(KiB/s)"
 
     def toCSV(self):
         c = str(int(self.bwconsensus)) 
@@ -460,7 +460,7 @@ def generate(args):
         starttime = "{0}".format(int(round(relayStartTime)))
         torargs = "{0} -f conf/tor.exitguard.torrc --BandwidthRate {1} --BandwidthBurst {2}".format(default_tor_args, r.getBWRateArg(), r.getBWBurstArg()) # in bytes
         if args.linkbw_in_consweight:
-            addRelayToXML(root, starttime, torargs, None, name, r.bwconsenus, r.bwconsensus, r.ip, r.code)
+            addRelayToXML(root, starttime, torargs, None, name, r.bwconsensus, r.bwconsensus, r.ip, r.code)
         else:
             addRelayToXML(root, starttime, torargs, None, name, r.download, r.upload, r.ip, r.code)
         relayStartTime += secondsPerRelay
@@ -663,7 +663,7 @@ def generate(args):
 
         # internet topology map
         e = etree.Element("topology")
-        e.set("path", "{0}share/topology.graphml.xml".format(INSTALLPREFIX))
+        e.set("path", "{0}share/atlas.201801.shadow113.graphml.xml".format(INSTALLPREFIX))
         root.insert(0, e)
 
         # all our hosts
