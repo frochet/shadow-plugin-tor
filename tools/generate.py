@@ -305,23 +305,8 @@ def generate(args):
         r.name = "relaymiddle{0}".format(i)
         i+=1
 
-    # output choices
     if not os.path.exists("conf"): os.makedirs("conf")
-    with open("conf/relay.choices.csv", "wb") as f:
-        print >>f, Relay.CSVHEADER
-        for r in exitguards_nodes: print >>f, r.toCSV()
-        for r in guards_nodes: print >>f, r.toCSV()
-        for r in exits_nodes: print >>f, r.toCSV()
-        for r in middles_nodes: print >>f, r.toCSV()
-    
-    # pickel output 
-    with open("conf/relay.choices.pickle", "wb") as picklef:
-        pickle.dump(exitguards_nodes, picklef, pickle.HIGHEST_PROTOCOL)
-        pickle.dump(guards_nodes, picklef, pickle.HIGHEST_PROTOCOL)
-        pickle.dump(exits_nodes, picklef, pickle.HIGHEST_PROTOCOL)
-        pickle.dump(middles_nodes, picklef, pickle.HIGHEST_PROTOCOL)
-    with open("conf/client-distribution.json", "wb") as jsonf:
-        json.dump(dict(citychoices), jsonf)
+
     # build the XML
     root = etree.Element("shadow")
     root.set("stoptime", "3600")
@@ -631,6 +616,16 @@ def generate(args):
     bridges = None
     write_torrc_files(args, dirauths, bridgeauths, bridges, guardfps, exitfps)
 
+    # output choices
+    with open("conf/relay.choices.csv", "wb") as f:
+        print >>f, Relay.CSVHEADER
+        for r in exitguards_nodes: print >>f, r.toCSV()
+        for r in guards_nodes: print >>f, r.toCSV()
+        for r in exits_nodes: print >>f, r.toCSV()
+        for r in middles_nodes: print >>f, r.toCSV()
+    
+    with open("conf/client-distribution.json", "wb") as jsonf:
+        json.dump(dict(citychoices), jsonf)
     # finally, print the XML file
     with open("shadow.config.xml", 'wb') as fhosts:
         # plug-ins
