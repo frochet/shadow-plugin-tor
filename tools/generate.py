@@ -198,6 +198,8 @@ def main():
                     default="../../resource/WUP2018-F12-Cities_Over_300K.xls")
     ap.add_argument('--linkbw_in_consweight', action="store_true",
                     default=False)
+    ap.add_argument('--set_cities', help="semi-colon separated list of cities,%;"
+                    " eg: 545654,10;544567,15")
 
     # positional args (required)
     ap.add_argument('alexa', action="store", type=str, help="path to an ALEXA file (produced with contrib/parsealexa.py)", metavar='ALEXA', default=None)
@@ -283,7 +285,8 @@ def generate(args):
     servers = getServers(geoentries, args.alexa)
     country_to_users = parse_userstats(args.connectingusers)
     citytraits = get_city_info(args.citytraits, args.ONUdb)
-    citychoices = getClientCityChoices(citytraits, country_to_users)
+    citychoices = getClientCityChoices(citytraits, country_to_users,
+                                       args.set_cities)
     cities = [citycode for (citycode, weight) in citychoices]
     weights = [weight for (citycode, weight) in citychoices]
     # clientCountryCodes = getClientCountryChoices(args.connectingusers)
@@ -808,7 +811,7 @@ def get_city_info(filename_city_traits, filename_city_db):
     
 
 
-def getClientCityChoices(citytraits, country_to_users):
+def getClientCityChoices(citytraits, country_to_users, set_cities):
     """
         Get the probability distribution of shadow cities of a given Shadow
         client
@@ -824,6 +827,17 @@ def getClientCityChoices(citytraits, country_to_users):
         citytraits[citytrait]["population"][1]*country_to_users[citytraits[citytrait]["iso_codes"][0]]
     #Normalize
     tot = sum(citychoices.values())
+    if args.set_cities:
+        city_to_modify = {}
+        cities = set_cities.split(";")
+        assert len(cities) == 1, "Handling more than 1 city not yet implemented"
+        for city in cities:
+            city_to_modify[city.split(',')[0]] = city.split(',')[1]
+        for city in city_to_modify:
+            #f(i) = beta*p_i/(1-pi_i) with beta = \sum{f_j}\{j=i}
+            citychoices[city] = ((tot-citychoices[city])*city_to_modify[city]/100.0)/(1-city_to_modify[city]/100.0)
+    tot = sum(citychoices.values())
+    print("Debug: {}".format(citychoices[city_to_modify.keys()[0]]/tot)
     return [(k, float(v)/tot) for k, v in citychoices.items()]
 
 
