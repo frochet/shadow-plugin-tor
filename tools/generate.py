@@ -198,8 +198,8 @@ def main():
                     default="../../resource/WUP2018-F12-Cities_Over_300K.xls")
     ap.add_argument('--linkbw_in_consweight', action="store_true",
                     default=False)
-    ap.add_argument('--set_cities', help="semi-colon separated list of cities,%;"
-                    " eg: 545654,10;544567,15")
+    ap.add_argument('--set_cities', help="semi-colon separated list of cities,percent;"
+            " eg: 545654,10:544567,15")
 
     # positional args (required)
     ap.add_argument('alexa', action="store", type=str, help="path to an ALEXA file (produced with contrib/parsealexa.py)", metavar='ALEXA', default=None)
@@ -555,26 +555,28 @@ def generate(args):
 
     i = 1
     while i <= nwebclients:
-        name = "webclient{0}".format(i)
+        city = choice(cities, p=weights)
+        name = "webclient{0}_{1}".format(i, city)
         starttime = "{0}".format(int(round(clientStartTime)))
         torargs = "{0} -f conf/tor.client.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torwebclient.graphml.xml"
 
         addRelayToXML(root, starttime, torargs, tgenargs, name,
-                      code=choice(cities, p=weights), relay_is_client=True)
+                      code=city, relay_is_client=True)
 
         clientStartTime += secondsPerClient
         i += 1
 
     i = 1
     while i <= nbulkclients:
-        name = "bulkclient{0}".format(i)
+        city = choice(cities, p=weights)
+        name = "bulkclient{0}_{1}".format(i, city)
         starttime = "{0}".format(int(round(clientStartTime)))
         torargs = "{0} -f conf/tor.client.torrc".format(default_tor_args) # in bytes
         tgenargs = "conf/tgen.torbulkclient.graphml.xml"
 
         addRelayToXML(root, starttime, torargs, tgenargs, name,
-                      code=choice(cities, p=weights), relay_is_client=True)
+                code=city, relay_is_client=True)
 
         clientStartTime += secondsPerClient
         i += 1
@@ -827,17 +829,17 @@ def getClientCityChoices(citytraits, country_to_users, set_cities):
         citytraits[citytrait]["population"][1]*country_to_users[citytraits[citytrait]["iso_codes"][0]]
     #Normalize
     tot = sum(citychoices.values())
-    if args.set_cities:
+    if set_cities:
         city_to_modify = {}
         cities = set_cities.split(";")
         assert len(cities) == 1, "Handling more than 1 city not yet implemented"
         for city in cities:
-            city_to_modify[city.split(',')[0]] = city.split(',')[1]
+            city_to_modify[city.split(',')[0]] = float(city.split(',')[1])
         for city in city_to_modify:
             #f(i) = beta*p_i/(1-pi_i) with beta = \sum{f_j}\{j=i}
             citychoices[city] = ((tot-citychoices[city])*city_to_modify[city]/100.0)/(1-city_to_modify[city]/100.0)
+        print("Debug: {}".format(citychoices[city_to_modify.keys()[0]]/tot))
     tot = sum(citychoices.values())
-    print("Debug: {}".format(citychoices[city_to_modify.keys()[0]]/tot)
     return [(k, float(v)/tot) for k, v in citychoices.items()]
 
 

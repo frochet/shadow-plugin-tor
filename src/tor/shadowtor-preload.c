@@ -9,7 +9,8 @@
 
 #include <openssl/crypto.h>
 #include <event2/dns.h>
-
+//#include <string.h>
+//#include <unistd.h>
 /********************************************************************************
  * start interposition functions
  ********************************************************************************/
