@@ -1125,7 +1125,7 @@ ControlPort 9051\n'.format(auths_lines, auth_name_csv)
 'ORPort 0\n\
 DirPort 0\n\
 ClientOnly 1\n\
-SocksPort 9000\n\
+SocksPort 9000 IsolateDestAddr IsolateDestPort\n\
 SocksListenAddress 127.0.0.1\n\
 BandwidthRate 5120000\n\
 BandwidthBurst 10240000\n'
